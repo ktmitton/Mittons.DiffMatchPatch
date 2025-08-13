@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Mittons.DiffMatchPatch.Models;
 using Mittons.DiffMatchPatch.Types;
 
@@ -439,6 +440,170 @@ public static class StringExtensions
 
     public static IEnumerable<Diff> CleanupSemanticLossless(this IEnumerable<Diff> diffs)
     {
-        throw new NotImplementedException("CleanupSemanticLossless is not implemented yet. Please use CleanupMerge instead.");
+        List<Diff> previousDiffs = [];
+        int commonOffset;
+
+        foreach (var currentDiff in diffs)
+        {
+            switch (previousDiffs.Count)
+            {
+                case 0:
+                    if (currentDiff.Operation == Operation.EQUAL)
+                    {
+                        previousDiffs.Add(currentDiff);
+                    }
+
+                    continue;
+                case 1:
+                    previousDiffs.Add(currentDiff);
+
+                    continue;
+                case 2:
+                    if (currentDiff.Operation != Operation.EQUAL)
+                    {
+                        yield return previousDiffs[0];
+                        yield return previousDiffs[1];
+
+                        previousDiffs.Clear();
+
+                        continue;
+                    }
+
+                    break;
+            }
+
+            string equality1 = previousDiffs[0].Text;
+            string edit = previousDiffs[1].Text;
+            string equality2 = currentDiff.Text;
+
+            // First, shift the edit as far left as possible
+            commonOffset = equality1.CommonSuffixLength(edit);
+            if (commonOffset > 0)
+            {
+                var commonString = edit[^commonOffset..];
+                equality1 = equality1[..^commonOffset];
+                edit = $"{commonString}{edit[..^commonOffset]}";
+                equality2 = $"{commonString}{equality2}";
+            }
+
+            // Second, step character by character right, looking for the best fit
+            string bestEquality1 = equality1;
+            string bestEdit = edit;
+            string bestEquality2 = equality2;
+            var bestScore = ComputeSemanticComparisonScore(equality1, edit) + ComputeSemanticComparisonScore(edit, equality2);
+
+            while (edit.Length != 0 && equality2.Length != 0 && edit[0] == equality2[0])
+            {
+                equality1 += edit[0];
+                edit = $"{edit[1..]}{equality2[0]}";
+                equality2 = equality2[1..];
+
+                var score = ComputeSemanticComparisonScore(equality1, edit) + ComputeSemanticComparisonScore(edit, equality2);
+
+                // The >= encourages trailing rather than leading whitespace on edits.
+                if (score >= bestScore)
+                {
+                    bestScore = score;
+                    bestEquality1 = equality1;
+                    bestEdit = edit;
+                    bestEquality2 = equality2;
+                }
+            }
+
+            if (previousDiffs[0].Text == bestEquality1)
+            {
+                yield return previousDiffs[0];
+                yield return previousDiffs[1];
+                previousDiffs.Clear();
+                previousDiffs.Add(currentDiff);
+
+                continue;
+            }
+
+            if (bestEquality1.Length != 0)
+            {
+                yield return new Diff(Operation.EQUAL, bestEquality1);
+            }
+
+            yield return previousDiffs[1] with { Text = bestEdit };
+
+            previousDiffs.Clear();
+            if (bestEquality2.Length != 0)
+            {
+                previousDiffs.Add(new Diff(Operation.EQUAL, bestEquality2));
+            }
+        }
+
+        foreach (var diff in previousDiffs)
+        {
+            yield return diff;
+        }
+    }
+
+    /// <summary>
+    /// Given two strings, compute a score representing whether the internal
+    /// boundary falls on logical boundaries.
+    /// </summary>
+    /// <param name="left">The string whose end boundary is being evaluated.</param>
+    /// <param name="right">The string whose start boundary is being evaluated.</param>
+    /// <returns>The score representing the comparison result.</returns>
+    /// <remarks>
+    /// Scores range from 0 (worst) to 6 (best):
+    /// <list type="number">
+    /// <item>No match</item>
+    /// <item>Non-alphanumeric</item>
+    /// <item>Whitespace</item>
+    /// <item>End of sentence</item>
+    /// <item>Line break</item>
+    /// <item>Blank lines</item>
+    /// <item>Edge match, both strings are empty</item>
+    /// </list>
+    /// </remarks>
+    private static int ComputeSemanticComparisonScore(string left, string right)
+    {
+        Regex BLANKLINEEND = new("\\n\\r?\\n\\Z");
+        Regex BLANKLINESTART = new("\\A\\r?\\n\\r?\\n");
+
+        if (left.Length == 0 || right.Length == 0)
+        {
+            return 6;
+        }
+
+        char leftEndingCharacter = left[^1];
+        char rightStartingCharacter = right[0];
+
+        bool leftEndsWithAlphaNumeric = char.IsLetterOrDigit(leftEndingCharacter);
+        bool rightStartsWithAlphaNumeric = char.IsLetterOrDigit(rightStartingCharacter);
+        if (leftEndsWithAlphaNumeric && rightStartsWithAlphaNumeric)
+        {
+            return 0;
+        }
+
+        bool leftEndsWithWhitespace = !leftEndsWithAlphaNumeric && char.IsWhiteSpace(leftEndingCharacter);
+        bool rightStartsWithWhitespace = !rightStartsWithAlphaNumeric && char.IsWhiteSpace(rightStartingCharacter);
+        if (!leftEndsWithWhitespace && !rightStartsWithWhitespace)
+        {
+            return 1;
+        }
+
+        bool leftEndsWithLineBreak = leftEndsWithWhitespace && char.IsControl(leftEndingCharacter);
+        bool rightStartsWithLineBreak = rightStartsWithWhitespace && char.IsControl(rightStartingCharacter);
+        bool leftEndsWithBlankLines = leftEndsWithLineBreak && BLANKLINEEND.IsMatch(left);
+        bool rightStartsWithBlankLines = rightStartsWithLineBreak && BLANKLINESTART.IsMatch(right);
+
+        if (leftEndsWithBlankLines || rightStartsWithBlankLines)
+        {
+            return 5;
+        }
+        else if (leftEndsWithLineBreak || rightStartsWithLineBreak)
+        {
+            return 4;
+        }
+        else if (!leftEndsWithAlphaNumeric && !leftEndsWithWhitespace && rightStartsWithWhitespace)
+        {
+            return 3;
+        }
+
+        return 2;
     }
 }
