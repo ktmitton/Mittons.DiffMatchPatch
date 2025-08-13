@@ -268,147 +268,177 @@ public static class StringExtensions
         }
     }
 
+    private static (IEnumerable<Diff> OptimizedDiffs, string NextRetainedText) OptimizeSection(
+        StringBuilder previousRetainedTextBuilder,
+        StringBuilder deletedTextBuilder,
+        StringBuilder insertedTextBuilder,
+        StringBuilder nextRetainedTextBuilder
+    )
+    {
+        var deletedText = deletedTextBuilder.ToString();
+        var insertedText = insertedTextBuilder.ToString();
+
+        var commonLength = deletedText.CommonSuffixLength(insertedText);
+        var nextRetainedText = commonLength == 0 ? nextRetainedTextBuilder.ToString() : $"{insertedText[^commonLength..]}{nextRetainedTextBuilder}";
+        if (commonLength > 0)
+        {
+            insertedText = insertedText[..^commonLength];
+            deletedText = deletedText[..^commonLength];
+        }
+
+        commonLength = deletedText.CommonPrefixLength(insertedText);
+        if (commonLength > 0)
+        {
+            previousRetainedTextBuilder.Append(insertedText[..commonLength]);
+
+            insertedText = insertedText[commonLength..];
+            deletedText = deletedText[commonLength..];
+        }
+
+        var previousRetainedText = previousRetainedTextBuilder.ToString();
+
+        var hasSingleModifier = string.IsNullOrEmpty(deletedText) != string.IsNullOrEmpty(insertedText);
+        var isBoundedByRetainedText = !string.IsNullOrEmpty(previousRetainedText) && !string.IsNullOrEmpty(nextRetainedText);
+        var skipOptimization = !hasSingleModifier || !isBoundedByRetainedText;
+
+        if (skipOptimization)
+        {
+            List<Diff> optimizedDiffs = [];
+
+            if (previousRetainedText.Length > 0)
+            {
+                optimizedDiffs.Add(new Diff(Operation.EQUAL, previousRetainedText));
+            }
+
+            if (deletedText.Length > 0)
+            {
+                optimizedDiffs.Add(new Diff(Operation.DELETE, deletedText));
+            }
+
+            if (insertedText.Length > 0)
+            {
+                optimizedDiffs.Add(new Diff(Operation.INSERT, insertedText));
+            }
+
+            return (optimizedDiffs, nextRetainedText);
+        }
+
+        var modifiedOperation = string.IsNullOrEmpty(deletedText) ? Operation.INSERT : Operation.DELETE;
+        var modifiedText = string.IsNullOrEmpty(deletedText) ? insertedText : deletedText;
+
+        if (modifiedText.EndsWith(previousRetainedText, StringComparison.Ordinal))
+        {
+            return (
+                [new Diff(modifiedOperation, $"{previousRetainedText}{modifiedText[..previousRetainedText.Length]}")],
+                $"{previousRetainedText}{nextRetainedText}"
+            );
+        }
+
+        if (modifiedText.StartsWith(nextRetainedText, StringComparison.Ordinal))
+        {
+            return (
+                [
+                    new Diff(Operation.EQUAL, $"{previousRetainedText}{nextRetainedText}"),
+                    new Diff(modifiedOperation, $"{modifiedText[nextRetainedText.Length..]}{nextRetainedText}")
+                ],
+                string.Empty
+            );
+        }
+
+        return (
+            [new Diff(Operation.EQUAL, previousRetainedText), new Diff(modifiedOperation, modifiedText)],
+            nextRetainedText
+        );
+    }
+
     public static IEnumerable<Diff> CleanupMerge(this IEnumerable<Diff> diffs)
     {
-        int commonLength;
+        Operation[] modifierOperations = [Operation.INSERT, Operation.DELETE];
 
         StringBuilder deletedTextBuilder = new();
         StringBuilder insertedTextBuilder = new();
         StringBuilder previousRetainedTextBuilder = new();
         StringBuilder nextRetainedTextBuilder = new();
 
-        string deletedText;
-        string insertedText;
+        IEnumerable<Diff> optimizedDiffs;
         string nextRetainedText;
 
         foreach (var diff in diffs)
         {
+            if (string.IsNullOrEmpty(diff.Text))
+            {
+                continue;
+            }
+
+            if (modifierOperations.Contains(diff.Operation) && (nextRetainedTextBuilder.Length > 0))
+            {
+                (optimizedDiffs, nextRetainedText) = OptimizeSection(
+                    previousRetainedTextBuilder,
+                    deletedTextBuilder,
+                    insertedTextBuilder,
+                    nextRetainedTextBuilder
+                );
+
+                foreach (var optimizedDiff in optimizedDiffs)
+                {
+                    yield return optimizedDiff;
+                }
+
+                deletedTextBuilder.Clear();
+                insertedTextBuilder.Clear();
+                previousRetainedTextBuilder.Clear();
+                nextRetainedTextBuilder.Clear();
+
+                if (!string.IsNullOrEmpty(nextRetainedText))
+                {
+                    previousRetainedTextBuilder.Append(nextRetainedText);
+                }
+            }
+
             switch (diff.Operation)
             {
                 case Operation.INSERT:
                     insertedTextBuilder.Append(diff.Text);
+
                     break;
                 case Operation.DELETE:
                     deletedTextBuilder.Append(diff.Text);
+
                     break;
                 case Operation.EQUAL:
                     if ((insertedTextBuilder.Length == 0) && (deletedTextBuilder.Length == 0))
                     {
+                        previousRetainedTextBuilder.Append(diff.Text);
+                    }
+                    else
+                    {
                         nextRetainedTextBuilder.Append(diff.Text);
-                        break;
-                    }
-
-                    var emitDeleteOnly = insertedTextBuilder.Length == 0;
-                    var emitInsertOnly = deletedTextBuilder.Length == 0;
-
-                    if (emitDeleteOnly)
-                    {
-                        yield return new Diff(Operation.DELETE, deletedTextBuilder.ToString());
-
-                        deletedTextBuilder.Clear();
-
-                        break;
-                    }
-
-                    if (emitInsertOnly)
-                    {
-                        yield return new Diff(Operation.INSERT, insertedTextBuilder.ToString());
-
-                        insertedTextBuilder.Clear();
-
-                        break;
-                    }
-
-                    deletedText = deletedTextBuilder.ToString();
-                    insertedText = insertedTextBuilder.ToString();
-
-                    deletedTextBuilder.Clear();
-                    insertedTextBuilder.Clear();
-
-                    commonLength = deletedText.CommonPrefixLength(insertedText);
-                    if (commonLength > 0)
-                    {
-                        nextRetainedTextBuilder.Append(insertedText[..commonLength]);
-                        insertedText = insertedText[commonLength..];
-                        deletedText = deletedText[commonLength..];
-                    }
-
-                    nextRetainedText = nextRetainedTextBuilder.ToString();
-                    nextRetainedTextBuilder.Clear();
-
-                    if (nextRetainedText.Length > 0)
-                    {
-                        yield return new Diff(Operation.EQUAL, nextRetainedText);
-                    }
-
-                    commonLength = deletedText.CommonSuffixLength(insertedText);
-                    if (commonLength > 0)
-                    {
-                        nextRetainedTextBuilder.Append(insertedText[^commonLength..]);
-
-                        insertedText = insertedText[..^commonLength];
-                        deletedText = deletedText[..^commonLength];
-                    }
-
-                    nextRetainedTextBuilder.Append(diff.Text);
-
-                    if (deletedText.Length > 0)
-                    {
-                        yield return new Diff(Operation.DELETE, deletedText);
-                    }
-
-                    if (insertedText.Length > 0)
-                    {
-                        yield return new Diff(Operation.INSERT, insertedText);
                     }
 
                     break;
             }
         }
 
-        deletedText = deletedTextBuilder.ToString();
-        insertedText = insertedTextBuilder.ToString();
+        (optimizedDiffs, nextRetainedText) = OptimizeSection(
+            previousRetainedTextBuilder,
+            deletedTextBuilder,
+            insertedTextBuilder,
+            nextRetainedTextBuilder
+        );
 
-        commonLength = deletedText.CommonPrefixLength(insertedText);
-        if (commonLength > 0)
+        foreach (var optimizedDiff in optimizedDiffs)
         {
-            nextRetainedTextBuilder.Append(insertedText[..commonLength]);
-            insertedText = insertedText[commonLength..];
-            deletedText = deletedText[commonLength..];
+            yield return optimizedDiff;
         }
 
-        nextRetainedText = nextRetainedTextBuilder.ToString();
-        nextRetainedTextBuilder.Clear();
-
-        if (nextRetainedText.Length > 0)
+        if (!string.IsNullOrEmpty(nextRetainedText))
         {
             yield return new Diff(Operation.EQUAL, nextRetainedText);
         }
+    }
 
-        commonLength = deletedText.CommonSuffixLength(insertedText);
-        if (commonLength > 0)
-        {
-            nextRetainedTextBuilder.Append(insertedText[^commonLength..]);
-
-            insertedText = insertedText[..^commonLength];
-            deletedText = deletedText[..^commonLength];
-        }
-
-        if (deletedText.Length > 0)
-        {
-            yield return new Diff(Operation.DELETE, deletedText);
-        }
-
-        if (insertedText.Length > 0)
-        {
-            yield return new Diff(Operation.INSERT, insertedText);
-        }
-
-        nextRetainedText = nextRetainedTextBuilder.ToString();
-
-        if (nextRetainedText.Length > 0)
-        {
-            yield return new Diff(Operation.EQUAL, nextRetainedText);
-        }
+    public static IEnumerable<Diff> CleanupSemanticLossless(this IEnumerable<Diff> diffs)
+    {
+        throw new NotImplementedException("CleanupSemanticLossless is not implemented yet. Please use CleanupMerge instead.");
     }
 }

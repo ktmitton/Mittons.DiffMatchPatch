@@ -309,25 +309,72 @@ public class DiffTest
             ]
         );
 
-    //     diffs = new List<Diff> { new Diff(Operation.EQUAL, "c"), new Diff(Operation.INSERT, "ab"), new Diff(Operation.EQUAL, "a") };
-    //     diffs = this.diff_cleanupMerge(diffs).ToList();
-    //     assertEquals("diff_cleanupMerge: Slide edit right.", new List<Diff> { new Diff(Operation.EQUAL, "ca"), new Diff(Operation.INSERT, "ba") }, diffs);
+        yield return (
+            [
+                new Diff(Operation.EQUAL, "c"),
+                new Diff(Operation.INSERT, "ab"),
+                new Diff(Operation.EQUAL, "a"),
+            ],
+            [
+                new Diff(Operation.EQUAL, "ca"),
+                new Diff(Operation.INSERT, "ba"),
+            ]
+        );
 
-    //     diffs = new List<Diff> { new Diff(Operation.EQUAL, "a"), new Diff(Operation.DELETE, "b"), new Diff(Operation.EQUAL, "c"), new Diff(Operation.DELETE, "ac"), new Diff(Operation.EQUAL, "x") };
-    //     diffs = this.diff_cleanupMerge(diffs).ToList();
-    //     assertEquals("diff_cleanupMerge: Slide edit left recursive.", new List<Diff> { new Diff(Operation.DELETE, "abc"), new Diff(Operation.EQUAL, "acx") }, diffs);
+        yield return (
+            [
+                new Diff(Operation.DELETE, "b"),
+                new Diff(Operation.INSERT, "ab"),
+                new Diff(Operation.EQUAL, "c"),
+            ],
+            [
+                new Diff(Operation.INSERT, "a"),
+                new Diff(Operation.EQUAL, "bc"),
+            ]
+        );
 
-    //     diffs = new List<Diff> { new Diff(Operation.EQUAL, "x"), new Diff(Operation.DELETE, "ca"), new Diff(Operation.EQUAL, "c"), new Diff(Operation.DELETE, "b"), new Diff(Operation.EQUAL, "a") };
-    //     diffs = this.diff_cleanupMerge(diffs).ToList();
-    //     assertEquals("diff_cleanupMerge: Slide edit right recursive.", new List<Diff> { new Diff(Operation.EQUAL, "xca"), new Diff(Operation.DELETE, "cba") }, diffs);
+        yield return (
+            [
+                new Diff(Operation.EQUAL, ""),
+                new Diff(Operation.INSERT, "a"),
+                new Diff(Operation.EQUAL, "b"),
+            ],
+            [
+                new Diff(Operation.INSERT, "a"),
+                new Diff(Operation.EQUAL, "b"),
+            ]
+        );
+    }
 
-    //     diffs = new List<Diff> { new Diff(Operation.DELETE, "b"), new Diff(Operation.INSERT, "ab"), new Diff(Operation.EQUAL, "c") };
-    //     diffs = this.diff_cleanupMerge(diffs).ToList();
-    //     assertEquals("diff_cleanupMerge: Empty merge.", new List<Diff> { new Diff(Operation.INSERT, "a"), new Diff(Operation.EQUAL, "bc") }, diffs);
+    public static IEnumerable<(IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)> CleanupMergeMultipassDatasource()
+    {
+        yield return (
+            [
+                new Diff(Operation.EQUAL, "a"),
+                new Diff(Operation.DELETE, "b"),
+                new Diff(Operation.EQUAL, "c"),
+                new Diff(Operation.DELETE, "ac"),
+                new Diff(Operation.EQUAL, "x")
+            ],
+            [
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.EQUAL, "acx"),
+            ]
+        );
 
-    //     diffs = new List<Diff> { new Diff(Operation.EQUAL, ""), new Diff(Operation.INSERT, "a"), new Diff(Operation.EQUAL, "b") };
-    //     diffs = this.diff_cleanupMerge(diffs).ToList();
-    //     assertEquals("diff_cleanupMerge: Empty equality.", new List<Diff> { new Diff(Operation.INSERT, "a"), new Diff(Operation.EQUAL, "b") }, diffs);
+        yield return (
+            [
+                new Diff(Operation.EQUAL, "x"),
+                new Diff(Operation.DELETE, "ca"),
+                new Diff(Operation.EQUAL, "c"),
+                new Diff(Operation.DELETE, "b"),
+                new Diff(Operation.EQUAL, "a"),
+            ],
+            [
+                new Diff(Operation.EQUAL, "xca"),
+                new Diff(Operation.DELETE, "cba"),
+            ]
+        );
     }
 
     [Test]
@@ -339,94 +386,128 @@ public class DiffTest
         await Assert.That(actualResult).IsEquivalentTo(expectedResult);
     }
 
-    // public void CleanupMergeTest()
-    // {
-    // }
+    [Test]
+    [Skip("We currently aren't doing multipass on this since that's only needed if this is called outside the normal workflow. Within the normal workflow, things _should_ be optimized enough that we don't have multiple groups that need checked together.")]
+    [MethodDataSource(nameof(CleanupMergeMultipassDatasource))]
+    public async Task CleanupMergeTest_Multipass(IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)
+    {
+        var actualResult = originalDiff.CleanupMerge();
 
-    // public void CleanupSemanticLosslessTest()
-    // {
-    //     // Slide diffs to match logical boundaries.
-    //     List<Diff> diffs = new List<Diff>();
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Null case.", new List<Diff>(), diffs);
+        await Assert.That(actualResult).IsEquivalentTo(expectedResult);
+    }
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "AAA\r\n\r\nBBB"),
-    //     new Diff(Operation.INSERT, "\r\nDDD\r\n\r\nBBB"),
-    //     new Diff(Operation.EQUAL, "\r\nEEE")
-    // };
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Blank lines.", new List<Diff> {
-    //     new Diff(Operation.EQUAL, "AAA\r\n\r\n"),
-    //     new Diff(Operation.INSERT, "BBB\r\nDDD\r\n\r\n"),
-    //     new Diff(Operation.EQUAL, "BBB\r\nEEE")}, diffs);
+    public static IEnumerable<(string description, IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)> CleanupSemanticLosslessDatasource()
+    {
+        yield return ("Null case.", [], []);
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "AAA\r\nBBB"),
-    //     new Diff(Operation.INSERT, " DDD\r\nBBB"),
-    //     new Diff(Operation.EQUAL, " EEE")};
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Line boundaries.", new List<Diff> {
-    //     new Diff(Operation.EQUAL, "AAA\r\n"),
-    //     new Diff(Operation.INSERT, "BBB DDD\r\n"),
-    //     new Diff(Operation.EQUAL, "BBB EEE")}, diffs);
+        yield return (
+            "Blank lines.",
+            [
+                new Diff(Operation.EQUAL, "AAA\r\n\r\nBBB"),
+                new Diff(Operation.INSERT, "\r\nDDD\r\n\r\nBBB"),
+                new Diff(Operation.EQUAL, "\r\nEEE"),
+            ],
+            [
+                new Diff(Operation.EQUAL, "AAA\r\n\r\n"),
+                new Diff(Operation.INSERT, "BBB\r\nDDD\r\n\r\n"),
+                new Diff(Operation.EQUAL, "BBB\r\nEEE"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The c"),
-    //     new Diff(Operation.INSERT, "ow and the c"),
-    //     new Diff(Operation.EQUAL, "at.")};
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Word boundaries.", new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The "),
-    //     new Diff(Operation.INSERT, "cow and the "),
-    //     new Diff(Operation.EQUAL, "cat.")}, diffs);
+        yield return (
+            "Line boundaries.",
+            [
+                new Diff(Operation.EQUAL, "AAA\r\nBBB"),
+                new Diff(Operation.INSERT, " DDD\r\nBBB"),
+                new Diff(Operation.EQUAL, " EEE"),
+            ],
+            [
+                new Diff(Operation.EQUAL, "AAA\r\n"),
+                new Diff(Operation.INSERT, "BBB DDD\r\n"),
+                new Diff(Operation.EQUAL, "BBB EEE"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The-c"),
-    //     new Diff(Operation.INSERT, "ow-and-the-c"),
-    //     new Diff(Operation.EQUAL, "at.")};
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Alphanumeric boundaries.", new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The-"),
-    //     new Diff(Operation.INSERT, "cow-and-the-"),
-    //     new Diff(Operation.EQUAL, "cat.")}, diffs);
+        yield return (
+            "Word boundaries.",
+            [
+                new Diff(Operation.EQUAL, "The c"),
+                new Diff(Operation.INSERT, "ow and the c"),
+                new Diff(Operation.EQUAL, "at."),
+            ],
+            [
+                new Diff(Operation.EQUAL, "The "),
+                new Diff(Operation.INSERT, "cow and the "),
+                new Diff(Operation.EQUAL, "cat."),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "a"),
-    //     new Diff(Operation.DELETE, "a"),
-    //     new Diff(Operation.EQUAL, "ax")};
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Hitting the start.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "a"),
-    //     new Diff(Operation.EQUAL, "aax")}, diffs);
+        yield return (
+            "Alphanumeric boundaries.",
+            [
+                new Diff(Operation.EQUAL, "The-c"),
+                new Diff(Operation.INSERT, "ow-and-the-c"),
+                new Diff(Operation.EQUAL, "at."),
+            ],
+            [
+                new Diff(Operation.EQUAL, "The-"),
+                new Diff(Operation.INSERT, "cow-and-the-"),
+                new Diff(Operation.EQUAL, "cat."),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "xa"),
-    //     new Diff(Operation.DELETE, "a"),
-    //     new Diff(Operation.EQUAL, "a")};
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Hitting the end.", new List<Diff> {
-    //     new Diff(Operation.EQUAL, "xaa"),
-    //     new Diff(Operation.DELETE, "a")}, diffs);
+        yield return (
+            "Hitting the start.",
+            [
+                new Diff(Operation.EQUAL, "a"),
+                new Diff(Operation.DELETE, "a"),
+                new Diff(Operation.EQUAL, "ax"),
+            ],
+            [
+                new Diff(Operation.DELETE, "a"),
+                new Diff(Operation.EQUAL, "aax"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The xxx. The "),
-    //     new Diff(Operation.INSERT, "zzz. The "),
-    //     new Diff(Operation.EQUAL, "yyy.")};
-    //     this.diff_cleanupSemanticLossless(diffs);
-    //     assertEquals("diff_cleanupSemanticLossless: Sentence boundaries.", new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The xxx."),
-    //     new Diff(Operation.INSERT, " The zzz."),
-    //     new Diff(Operation.EQUAL, " The yyy.")}, diffs);
-    // }
+        yield return (
+            "Hitting the end.",
+            [
+                new Diff(Operation.EQUAL, "xa"),
+                new Diff(Operation.DELETE, "a"),
+                new Diff(Operation.EQUAL, "a"),
+            ],
+            [
+                new Diff(Operation.EQUAL, "xaa"),
+                new Diff(Operation.DELETE, "a"),
+            ]
+        );
+
+        yield return (
+            "Sentence boundaries.",
+            [
+                new Diff(Operation.EQUAL, "The xxx. The "),
+                new Diff(Operation.INSERT, "zzz. The "),
+                new Diff(Operation.EQUAL, "yyy."),
+            ],
+            [
+                new Diff(Operation.EQUAL, "The xxx."),
+                new Diff(Operation.INSERT, " The zzz."),
+                new Diff(Operation.EQUAL, " The yyy."),
+            ]
+        );
+    }
+
+    [Test]
+    [MethodDataSource(nameof(CleanupSemanticLosslessDatasource))]
+    public async Task CleanupSemanticLosslessTest(string description, IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)
+    {
+        var actualResult = originalDiff.CleanupSemanticLossless();
+
+        await Assert.That(actualResult).IsEquivalentTo(expectedResult);
+    }
 
     // public void CleanupSemanticTest()
     // {
-    //     // Cleanup semantically trivial equalities.
-    //     // Null case.
-    //     List<Diff> diffs = new List<Diff>();
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Null case.", new List<Diff>(), diffs);
 
     //     diffs = new List<Diff> {
     //     new Diff(Operation.DELETE, "ab"),
