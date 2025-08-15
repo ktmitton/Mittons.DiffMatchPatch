@@ -841,4 +841,74 @@ public static class StringExtensions
 
         return changes ? CleanupMerge(diffsList) : diffsList;
     }
+
+    /**
+        * Convert a Diff list into a pretty HTML report.
+        * @param diffs List of Diff objects.
+        * @return HTML representation.
+        */
+    public static string CreateHtmlReport(this IEnumerable<Diff> diffs)
+    {
+        StringBuilder html = new();
+
+        foreach (Diff aDiff in diffs)
+        {
+            string text = aDiff.Text.Replace("&", "&amp;").Replace("<", "&lt;")
+                .Replace(">", "&gt;").Replace("\n", "&para;<br>");
+            switch (aDiff.Operation)
+            {
+                case Operation.INSERT:
+                    html.Append($"""<ins style="background:#e6ffe6;">{text}</ins>""");
+                    break;
+                case Operation.DELETE:
+                    html.Append($"""<del style="background:#ffe6e6;">{text}</del>""");
+                    break;
+                case Operation.EQUAL:
+                    html.Append($"<span>{text}</span>");
+                    break;
+            }
+        }
+
+        return html.ToString();
+    }
+
+    /**
+        * Compute and return the source text (all equalities and deletions).
+        * @param diffs List of Diff objects.
+        * @return Source text.
+        */
+    public static string ComposeOriginalText(this IEnumerable<Diff> diffs)
+    {
+        StringBuilder text = new();
+
+        foreach (Diff aDiff in diffs)
+        {
+            if (aDiff.Operation != Operation.INSERT)
+            {
+                text.Append(aDiff.Text);
+            }
+        }
+
+        return text.ToString();
+    }
+
+    /**
+        * Compute and return the destination text (all equalities and insertions).
+        * @param diffs List of Diff objects.
+        * @return Destination text.
+        */
+    public static string ComposeFinalText(this IEnumerable<Diff> diffs)
+    {
+        StringBuilder text = new();
+
+        foreach (Diff aDiff in diffs)
+        {
+            if (aDiff.Operation != Operation.DELETE)
+            {
+                text.Append(aDiff.Text);
+            }
+        }
+
+        return text.ToString();
+    }
 }

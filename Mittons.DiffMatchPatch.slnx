@@ -4,6 +4,9 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Folder Name="/benchmark/">
+    <Project Path="benchmark/Mittons.DiffMatchPatch.Benchmark/Mittons.DiffMatchPatch.Benchmark.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Mittons.DiffMatchPatch/Mittons.DiffMatchPatch.csproj" />
   </Folder>

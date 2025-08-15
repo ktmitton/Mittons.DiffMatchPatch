@@ -772,32 +772,63 @@ public class DiffTest
         await Assert.That(actualResult).IsEquivalentTo(expectedResult);
     }
 
-    // public void PrettyHtmlTest()
-    // {
-    //     // Pretty print.
-    //     List<Diff> diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "a\n"),
-    //     new Diff(Operation.DELETE, "<B>b</B>"),
-    //     new Diff(Operation.INSERT, "c&d")};
-    //     assertEquals("diff_prettyHtml:", "<span>a&para;<br></span><del style=\"background:#ffe6e6;\">&lt;B&gt;b&lt;/B&gt;</del><ins style=\"background:#e6ffe6;\">c&amp;d</ins>",
-    //         this.diff_prettyHtml(diffs));
-    // }
+    [Test]
+    public async Task PrettyHtmlTest()
+    {
+        var expectedResult = """<span>a&para;<br></span><del style="background:#ffe6e6;">&lt;B&gt;b&lt;/B&gt;</del><ins style="background:#e6ffe6;">c&amp;d</ins>""";
 
-    // public void TextTest()
-    // {
-    //     // Compute the source and destination texts.
-    //     List<Diff> diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "jump"),
-    //     new Diff(Operation.DELETE, "s"),
-    //     new Diff(Operation.INSERT, "ed"),
-    //     new Diff(Operation.EQUAL, " over "),
-    //     new Diff(Operation.DELETE, "the"),
-    //     new Diff(Operation.INSERT, "a"),
-    //     new Diff(Operation.EQUAL, " lazy")};
-    //     assertEquals("diff_text1:", "jumps over the lazy", this.diff_text1(diffs));
+        List<Diff> diffs = [
+            new Diff(Operation.EQUAL, "a\n"),
+            new Diff(Operation.DELETE, "<B>b</B>"),
+            new Diff(Operation.INSERT, "c&d"),
+        ];
 
-    //     assertEquals("diff_text2:", "jumped over a lazy", this.diff_text2(diffs));
-    // }
+        var actualResult = diffs.CreateHtmlReport();
+
+        await Assert.That(actualResult).IsEqualTo(expectedResult);
+    }
+
+    [Test]
+    public async Task ComposeOriginalTextTest()
+    {
+        var expectedOriginalText = "jumps over the lazy";
+
+        // Compute the source and destination texts.
+        List<Diff> diffs = [
+            new Diff(Operation.EQUAL, "jump"),
+            new Diff(Operation.DELETE, "s"),
+            new Diff(Operation.INSERT, "ed"),
+            new Diff(Operation.EQUAL, " over "),
+            new Diff(Operation.DELETE, "the"),
+            new Diff(Operation.INSERT, "a"),
+            new Diff(Operation.EQUAL, " lazy"),
+        ];
+
+        var actualOriginalText = diffs.ComposeOriginalText();
+
+        await Assert.That(actualOriginalText).IsEqualTo(expectedOriginalText);
+    }
+
+    [Test]
+    public async Task ComposeFinalTextTest()
+    {
+        var expectedFinalText = "jumped over a lazy";
+
+        // Compute the source and destination texts.
+        List<Diff> diffs = [
+            new Diff(Operation.EQUAL, "jump"),
+            new Diff(Operation.DELETE, "s"),
+            new Diff(Operation.INSERT, "ed"),
+            new Diff(Operation.EQUAL, " over "),
+            new Diff(Operation.DELETE, "the"),
+            new Diff(Operation.INSERT, "a"),
+            new Diff(Operation.EQUAL, " lazy"),
+        ];
+
+        var actualFinalText = diffs.ComposeFinalText();
+
+        await Assert.That(actualFinalText).IsEqualTo(expectedFinalText);
+    }
 
     // public void DeltaTest()
     // {
