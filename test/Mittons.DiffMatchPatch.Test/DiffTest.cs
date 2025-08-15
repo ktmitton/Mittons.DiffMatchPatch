@@ -506,120 +506,168 @@ public class DiffTest
         await Assert.That(actualResult).IsEquivalentTo(expectedResult);
     }
 
-    // public void CleanupSemanticTest()
-    // {
+    public static IEnumerable<(string description, IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)> CleanupSemanticDatasource()
+    {
+        yield return (
+            "No elimination #1.",
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.INSERT, "cd"),
+                new Diff(Operation.EQUAL, "12"),
+                new Diff(Operation.DELETE, "e"),
+            ],
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.INSERT, "cd"),
+                new Diff(Operation.EQUAL, "12"),
+                new Diff(Operation.DELETE, "e"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.INSERT, "cd"),
-    //     new Diff(Operation.EQUAL, "12"),
-    //     new Diff(Operation.DELETE, "e")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: No elimination #1.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.INSERT, "cd"),
-    //     new Diff(Operation.EQUAL, "12"),
-    //     new Diff(Operation.DELETE, "e")}, diffs);
+        yield return (
+            "No elimination #2.",
+            [
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.INSERT, "ABC"),
+                new Diff(Operation.EQUAL, "1234"),
+                new Diff(Operation.DELETE, "wxyz"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.INSERT, "ABC"),
+                new Diff(Operation.EQUAL, "1234"),
+                new Diff(Operation.DELETE, "wxyz"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "abc"),
-    //     new Diff(Operation.INSERT, "ABC"),
-    //     new Diff(Operation.EQUAL, "1234"),
-    //     new Diff(Operation.DELETE, "wxyz")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: No elimination #2.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abc"),
-    //     new Diff(Operation.INSERT, "ABC"),
-    //     new Diff(Operation.EQUAL, "1234"),
-    //     new Diff(Operation.DELETE, "wxyz")}, diffs);
+        yield return (
+            "Simple elimination.",
+            [
+                new Diff(Operation.DELETE, "a"),
+                new Diff(Operation.EQUAL, "b"),
+                new Diff(Operation.DELETE, "c"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.INSERT, "b"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "a"),
-    //     new Diff(Operation.EQUAL, "b"),
-    //     new Diff(Operation.DELETE, "c")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Simple elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abc"),
-    //     new Diff(Operation.INSERT, "b")}, diffs);
+        yield return (
+            "Backpass elimination.",
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.EQUAL, "cd"),
+                new Diff(Operation.DELETE, "e"),
+                new Diff(Operation.EQUAL, "f"),
+                new Diff(Operation.INSERT, "g"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abcdef"),
+                new Diff(Operation.INSERT, "cdfg"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.EQUAL, "cd"),
-    //     new Diff(Operation.DELETE, "e"),
-    //     new Diff(Operation.EQUAL, "f"),
-    //     new Diff(Operation.INSERT, "g")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Backpass elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abcdef"),
-    //     new Diff(Operation.INSERT, "cdfg")}, diffs);
+        yield return (
+            "Multiple elimination.",
+            [
+                new Diff(Operation.INSERT, "1"),
+                new Diff(Operation.EQUAL, "A"),
+                new Diff(Operation.DELETE, "B"),
+                new Diff(Operation.INSERT, "2"),
+                new Diff(Operation.EQUAL, "_"),
+                new Diff(Operation.INSERT, "1"),
+                new Diff(Operation.EQUAL, "A"),
+                new Diff(Operation.DELETE, "B"),
+                new Diff(Operation.INSERT, "2"),
+            ],
+            [
+                new Diff(Operation.DELETE, "AB_AB"),
+                new Diff(Operation.INSERT, "1A2_1A2"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.INSERT, "1"),
-    //     new Diff(Operation.EQUAL, "A"),
-    //     new Diff(Operation.DELETE, "B"),
-    //     new Diff(Operation.INSERT, "2"),
-    //     new Diff(Operation.EQUAL, "_"),
-    //     new Diff(Operation.INSERT, "1"),
-    //     new Diff(Operation.EQUAL, "A"),
-    //     new Diff(Operation.DELETE, "B"),
-    //     new Diff(Operation.INSERT, "2")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Multiple elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "AB_AB"),
-    //     new Diff(Operation.INSERT, "1A2_1A2")}, diffs);
+        yield return (
+            "Word boundaries.",
+            [
+                new Diff(Operation.EQUAL, "The c"),
+                new Diff(Operation.DELETE, "ow and the c"),
+                new Diff(Operation.EQUAL, "at."),
+            ],
+            [
+                new Diff(Operation.EQUAL, "The "),
+                new Diff(Operation.DELETE, "cow and the "),
+                new Diff(Operation.EQUAL, "cat."),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The c"),
-    //     new Diff(Operation.DELETE, "ow and the c"),
-    //     new Diff(Operation.EQUAL, "at.")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Word boundaries.", new List<Diff> {
-    //     new Diff(Operation.EQUAL, "The "),
-    //     new Diff(Operation.DELETE, "cow and the "),
-    //     new Diff(Operation.EQUAL, "cat.")}, diffs);
+        yield return (
+            "No overlap elimination.",
+            [
+                new Diff(Operation.DELETE, "abcxx"),
+                new Diff(Operation.INSERT, "xxdef"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abcxx"),
+                new Diff(Operation.INSERT, "xxdef"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "abcxx"),
-    //     new Diff(Operation.INSERT, "xxdef")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: No overlap elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abcxx"),
-    //     new Diff(Operation.INSERT, "xxdef")}, diffs);
+        yield return (
+            "Overlap elimination.",
+            [
+                new Diff(Operation.DELETE, "abcxxx"),
+                new Diff(Operation.INSERT, "xxxdef"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.EQUAL, "xxx"),
+                new Diff(Operation.INSERT, "def"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "abcxxx"),
-    //     new Diff(Operation.INSERT, "xxxdef")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Overlap elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abc"),
-    //     new Diff(Operation.EQUAL, "xxx"),
-    //     new Diff(Operation.INSERT, "def")}, diffs);
+        yield return (
+            "Reverse overlap elimination.",
+            [
+                new Diff(Operation.DELETE, "xxxabc"),
+                new Diff(Operation.INSERT, "defxxx"),
+            ],
+            [
+                new Diff(Operation.INSERT, "def"),
+                new Diff(Operation.EQUAL, "xxx"),
+                new Diff(Operation.DELETE, "abc"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "xxxabc"),
-    //     new Diff(Operation.INSERT, "defxxx")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Reverse overlap elimination.", new List<Diff> {
-    //     new Diff(Operation.INSERT, "def"),
-    //     new Diff(Operation.EQUAL, "xxx"),
-    //     new Diff(Operation.DELETE, "abc")}, diffs);
+        yield return (
+            "Two overlap eliminations.",
+            [
+                new Diff(Operation.DELETE, "abcd1212"),
+                new Diff(Operation.INSERT, "1212efghi"),
+                new Diff(Operation.EQUAL, "----"),
+                new Diff(Operation.DELETE, "A3"),
+                new Diff(Operation.INSERT, "3BC"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abcd"),
+                new Diff(Operation.EQUAL, "1212"),
+                new Diff(Operation.INSERT, "efghi"),
+                new Diff(Operation.EQUAL, "----"),
+                new Diff(Operation.DELETE, "A"),
+                new Diff(Operation.EQUAL, "3"),
+                new Diff(Operation.INSERT, "BC"),
+            ]
+        );
+    }
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "abcd1212"),
-    //     new Diff(Operation.INSERT, "1212efghi"),
-    //     new Diff(Operation.EQUAL, "----"),
-    //     new Diff(Operation.DELETE, "A3"),
-    //     new Diff(Operation.INSERT, "3BC")};
-    //     this.diff_cleanupSemantic(diffs);
-    //     assertEquals("diff_cleanupSemantic: Two overlap eliminations.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abcd"),
-    //     new Diff(Operation.EQUAL, "1212"),
-    //     new Diff(Operation.INSERT, "efghi"),
-    //     new Diff(Operation.EQUAL, "----"),
-    //     new Diff(Operation.DELETE, "A"),
-    //     new Diff(Operation.EQUAL, "3"),
-    //     new Diff(Operation.INSERT, "BC")}, diffs);
-    // }
+    [Test]
+    [MethodDataSource(nameof(CleanupSemanticDatasource))]
+    public async Task CleanupSemanticTest(string description, IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)
+    {
+        var actualResult = originalDiff.CleanupSemantic();
+
+        await Assert.That(actualResult).IsEquivalentTo(expectedResult);
+    }
 
     // public void CleanupEfficiencyTest()
     // {

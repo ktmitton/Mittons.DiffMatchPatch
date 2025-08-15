@@ -34,14 +34,15 @@ public static class StringExtensions
         var best = 0;
         for (int i = maximumOverlap - 1; i > -1; --i)
         {
-            if (otherSpan.StartsWith(thisSpan[i..]))
+            var pattern = thisSpan[i..];
+            if (otherSpan.StartsWith(pattern))
             {
                 best = i;
 
                 continue;
             }
 
-            if (thisSpan.IndexOf(otherSpan[..(i + 1)]) == -1)
+            if (otherSpan.IndexOf(pattern, StringComparison.Ordinal) == -1)
             {
                 break;
             }
@@ -452,6 +453,10 @@ public static class StringExtensions
                     {
                         previousDiffs.Add(currentDiff);
                     }
+                    else
+                    {
+                        yield return currentDiff;
+                    }
 
                     continue;
                 case 1:
@@ -463,6 +468,7 @@ public static class StringExtensions
                     {
                         yield return previousDiffs[0];
                         yield return previousDiffs[1];
+                        yield return currentDiff;
 
                         previousDiffs.Clear();
 
@@ -605,5 +611,134 @@ public static class StringExtensions
         }
 
         return 2;
+    }
+
+    public static IEnumerable<Diff> CleanupSemantic(this IEnumerable<Diff> diffs)
+    {
+        var diffsList = diffs.ToList();
+        bool changes = false;
+        // Stack of indices where equalities are found.
+        Stack<int> equalities = [];
+        // Always equal to equalities[equalitiesLength-1][1]
+        string? lastEquality = null;
+        int pointer = 0;  // Index of current position.
+                          // Number of characters that changed prior to the equality.
+        int length_insertions1 = 0;
+        int length_deletions1 = 0;
+        // Number of characters that changed after the equality.
+        int length_insertions2 = 0;
+        int length_deletions2 = 0;
+        while (pointer < diffsList.Count)
+        {
+            if (diffsList[pointer].Operation == Operation.EQUAL)
+            {  // Equality found.
+                equalities.Push(pointer);
+                length_insertions1 = length_insertions2;
+                length_deletions1 = length_deletions2;
+                length_insertions2 = 0;
+                length_deletions2 = 0;
+                lastEquality = diffsList[pointer].Text;
+            }
+            else
+            {  // an insertion or deletion
+                if (diffsList[pointer].Operation == Operation.INSERT)
+                {
+                    length_insertions2 += diffsList[pointer].Text.Length;
+                }
+                else
+                {
+                    length_deletions2 += diffsList[pointer].Text.Length;
+                }
+                // Eliminate an equality that is smaller or equal to the edits on both
+                // sides of it.
+                if (lastEquality != null && (lastEquality.Length
+                    <= Math.Max(length_insertions1, length_deletions1))
+                    && (lastEquality.Length
+                        <= Math.Max(length_insertions2, length_deletions2)))
+                {
+                    // Duplicate record.
+                    diffsList.Insert(equalities.Peek(),
+                                    new Diff(Operation.DELETE, lastEquality));
+                    // Change second copy to insert.
+                    diffsList[equalities.Peek() + 1] = diffsList[equalities.Peek() + 1] with
+                    {
+                        Operation = Operation.INSERT
+                    };
+                    // Throw away the equality we just deleted.
+                    equalities.Pop();
+                    if (equalities.Count > 0)
+                    {
+                        equalities.Pop();
+                    }
+                    pointer = equalities.Count > 0 ? equalities.Peek() : -1;
+                    length_insertions1 = 0;  // Reset the counters.
+                    length_deletions1 = 0;
+                    length_insertions2 = 0;
+                    length_deletions2 = 0;
+                    lastEquality = null;
+                    changes = true;
+                }
+            }
+            pointer++;
+        }
+
+        var normalizedDiffs = CleanupSemanticLossless(changes ? CleanupMerge(diffsList) : diffsList).ToList();
+
+        // Find any overlaps between deletions and insertions.
+        // e.g: <del>abcxxx</del><ins>xxxdef</ins>
+        //   -> <del>abc</del>xxx<ins>def</ins>
+        // e.g: <del>xxxabc</del><ins>defxxx</ins>
+        //   -> <ins>def</ins>xxx<del>abc</del>
+        // Only extract an overlap if it is as big as the edit ahead or behind it.
+        pointer = 1;
+        while (pointer < normalizedDiffs.Count)
+        {
+            if (normalizedDiffs[pointer - 1].Operation == Operation.DELETE &&
+                normalizedDiffs[pointer].Operation == Operation.INSERT)
+            {
+                string deletion = normalizedDiffs[pointer - 1].Text;
+                string insertion = normalizedDiffs[pointer].Text;
+                int overlap_length1 = CommonOverlapLength(deletion, insertion);
+                int overlap_length2 = CommonOverlapLength(insertion, deletion);
+                if (overlap_length1 >= overlap_length2)
+                {
+                    if (overlap_length1 >= deletion.Length / 2.0 ||
+                        overlap_length1 >= insertion.Length / 2.0)
+                    {
+                        // Overlap found.
+                        // Insert an equality and trim the surrounding edits.
+                        normalizedDiffs.Insert(pointer, new Diff(Operation.EQUAL,
+                            insertion.Substring(0, overlap_length1)));
+                        normalizedDiffs[pointer - 1] = normalizedDiffs[pointer - 1] with
+                        {
+                            Text = deletion.Substring(0, deletion.Length - overlap_length1)
+                        };
+                        normalizedDiffs[pointer + 1] = normalizedDiffs[pointer + 1] with
+                        {
+                            Text = insertion.Substring(overlap_length1)
+                        };
+                        pointer++;
+                    }
+                }
+                else
+                {
+                    if (overlap_length2 >= deletion.Length / 2.0 ||
+                        overlap_length2 >= insertion.Length / 2.0)
+                    {
+                        // Reverse overlap found.
+                        // Insert an equality and swap and trim the surrounding edits.
+                        normalizedDiffs.Insert(pointer, new Diff(Operation.EQUAL,
+                            deletion.Substring(0, overlap_length2)));
+                        normalizedDiffs[pointer - 1] = new(Operation.INSERT, insertion[..^overlap_length2]);
+                        normalizedDiffs[pointer + 1] = new(Operation.DELETE, deletion[overlap_length2..]);
+                        pointer++;
+                    }
+                }
+                pointer++;
+            }
+            pointer++;
+        }
+
+        return normalizedDiffs;
     }
 }
