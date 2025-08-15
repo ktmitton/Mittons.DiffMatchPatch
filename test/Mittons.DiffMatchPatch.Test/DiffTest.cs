@@ -669,75 +669,108 @@ public class DiffTest
         await Assert.That(actualResult).IsEquivalentTo(expectedResult);
     }
 
-    // public void CleanupEfficiencyTest()
-    // {
-    //     // Cleanup operationally trivial equalities.
-    //     this.Diff_EditCost = 4;
-    //     List<Diff> diffs = new List<Diff>();
-    //     this.diff_cleanupEfficiency(diffs);
-    //     assertEquals("diff_cleanupEfficiency: Null case.", new List<Diff>(), diffs);
+    public static IEnumerable<(string description, short editCost, IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)> CleanupEfficiencyDatasource()
+    {
+        yield return (
+            "Null case.",
+            4,
+            [],
+            []
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.INSERT, "12"),
-    //     new Diff(Operation.EQUAL, "wxyz"),
-    //     new Diff(Operation.DELETE, "cd"),
-    //     new Diff(Operation.INSERT, "34")};
-    //     this.diff_cleanupEfficiency(diffs);
-    //     assertEquals("diff_cleanupEfficiency: No elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.INSERT, "12"),
-    //     new Diff(Operation.EQUAL, "wxyz"),
-    //     new Diff(Operation.DELETE, "cd"),
-    //     new Diff(Operation.INSERT, "34")}, diffs);
+        yield return (
+            "No elimination.",
+            4,
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.INSERT, "12"),
+                new Diff(Operation.EQUAL, "wxyz"),
+                new Diff(Operation.DELETE, "cd"),
+                new Diff(Operation.INSERT, "34"),
+            ],
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.INSERT, "12"),
+                new Diff(Operation.EQUAL, "wxyz"),
+                new Diff(Operation.DELETE, "cd"),
+                new Diff(Operation.INSERT, "34"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.INSERT, "12"),
-    //     new Diff(Operation.EQUAL, "xyz"),
-    //     new Diff(Operation.DELETE, "cd"),
-    //     new Diff(Operation.INSERT, "34")};
-    //     this.diff_cleanupEfficiency(diffs);
-    //     assertEquals("diff_cleanupEfficiency: Four-edit elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abxyzcd"),
-    //     new Diff(Operation.INSERT, "12xyz34")}, diffs);
+        yield return (
+            "Four-edit elimination.",
+            4,
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.INSERT, "12"),
+                new Diff(Operation.EQUAL, "xyz"),
+                new Diff(Operation.DELETE, "cd"),
+                new Diff(Operation.INSERT, "34"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abxyzcd"),
+                new Diff(Operation.INSERT, "12xyz34"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.INSERT, "12"),
-    //     new Diff(Operation.EQUAL, "x"),
-    //     new Diff(Operation.DELETE, "cd"),
-    //     new Diff(Operation.INSERT, "34")};
-    //     this.diff_cleanupEfficiency(diffs);
-    //     assertEquals("diff_cleanupEfficiency: Three-edit elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "xcd"),
-    //     new Diff(Operation.INSERT, "12x34")}, diffs);
+        yield return (
+            "Three-edit elimination.",
+            4,
+            [
+                new Diff(Operation.INSERT, "12"),
+                new Diff(Operation.EQUAL, "x"),
+                new Diff(Operation.DELETE, "cd"),
+                new Diff(Operation.INSERT, "34"),
+            ],
+            [
+                new Diff(Operation.DELETE, "xcd"),
+                new Diff(Operation.INSERT, "12x34"),
+            ]
+        );
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.INSERT, "12"),
-    //     new Diff(Operation.EQUAL, "xy"),
-    //     new Diff(Operation.INSERT, "34"),
-    //     new Diff(Operation.EQUAL, "z"),
-    //     new Diff(Operation.DELETE, "cd"),
-    //     new Diff(Operation.INSERT, "56")};
-    //     this.diff_cleanupEfficiency(diffs);
-    //     assertEquals("diff_cleanupEfficiency: Backpass elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abxyzcd"),
-    //     new Diff(Operation.INSERT, "12xy34z56")}, diffs);
+        yield return (
+            "Backpass elimination.",
+            4,
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.INSERT, "12"),
+                new Diff(Operation.EQUAL, "xy"),
+                new Diff(Operation.INSERT, "34"),
+                new Diff(Operation.EQUAL, "z"),
+                new Diff(Operation.DELETE, "cd"),
+                new Diff(Operation.INSERT, "56"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abxyzcd"),
+                new Diff(Operation.INSERT, "12xy34z56"),
+            ]
+        );
 
-    //     this.Diff_EditCost = 5;
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "ab"),
-    //     new Diff(Operation.INSERT, "12"),
-    //     new Diff(Operation.EQUAL, "wxyz"),
-    //     new Diff(Operation.DELETE, "cd"),
-    //     new Diff(Operation.INSERT, "34")};
-    //     this.diff_cleanupEfficiency(diffs);
-    //     assertEquals("diff_cleanupEfficiency: High cost elimination.", new List<Diff> {
-    //     new Diff(Operation.DELETE, "abwxyzcd"),
-    //     new Diff(Operation.INSERT, "12wxyz34")}, diffs);
-    //     this.Diff_EditCost = 4;
-    // }
+        yield return (
+            "High cost elimination.",
+            5,
+            [
+                new Diff(Operation.DELETE, "ab"),
+                new Diff(Operation.INSERT, "12"),
+                new Diff(Operation.EQUAL, "wxyz"),
+                new Diff(Operation.DELETE, "cd"),
+                new Diff(Operation.INSERT, "34"),
+            ],
+            [
+                new Diff(Operation.DELETE, "abwxyzcd"),
+                new Diff(Operation.INSERT, "12wxyz34"),
+            ]
+        );
+    }
+
+    [Test]
+    [MethodDataSource(nameof(CleanupEfficiencyDatasource))]
+    public async Task CleanupEfficiencyTest(string description, short editCost, IEnumerable<Diff> originalDiff, IEnumerable<Diff> expectedResult)
+    {
+        var actualResult = originalDiff.CleanupEfficiency(editCost);
+
+        await Assert.That(actualResult).IsEquivalentTo(expectedResult);
+    }
 
     // public void PrettyHtmlTest()
     // {

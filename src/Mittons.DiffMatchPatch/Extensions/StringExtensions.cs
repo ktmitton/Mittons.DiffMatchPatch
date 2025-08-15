@@ -741,4 +741,104 @@ public static class StringExtensions
 
         return normalizedDiffs;
     }
+
+    /**
+        * Reduce the number of edits by eliminating operationally trivial
+        * equalities.
+        * @param diffs List of Diff objects.
+        */
+    public static IEnumerable<Diff> CleanupEfficiency(this IEnumerable<Diff> diffs, short editCost)
+    {
+        var diffsList = diffs.ToList();
+
+        bool changes = false;
+        // Stack of indices where equalities are found.
+        Stack<int> equalities = new Stack<int>();
+        // Always equal to equalities[equalitiesLength-1][1]
+        string lastEquality = string.Empty;
+        int pointer = 0;  // Index of current position.
+                            // Is there an insertion operation before the last equality.
+        bool pre_ins = false;
+        // Is there a deletion operation before the last equality.
+        bool pre_del = false;
+        // Is there an insertion operation after the last equality.
+        bool post_ins = false;
+        // Is there a deletion operation after the last equality.
+        bool post_del = false;
+        while (pointer < diffsList.Count)
+        {
+            if (diffsList[pointer].Operation == Operation.EQUAL)
+            {  // Equality found.
+                if (diffsList[pointer].Text.Length < editCost
+                    && (post_ins || post_del))
+                {
+                    // Candidate found.
+                    equalities.Push(pointer);
+                    pre_ins = post_ins;
+                    pre_del = post_del;
+                    lastEquality = diffsList[pointer].Text;
+                }
+                else
+                {
+                    // Not a candidate, and can never become one.
+                    equalities.Clear();
+                    lastEquality = string.Empty;
+                }
+                post_ins = post_del = false;
+            }
+            else
+            {  // An insertion or deletion.
+                if (diffsList[pointer].Operation == Operation.DELETE)
+                {
+                    post_del = true;
+                }
+                else
+                {
+                    post_ins = true;
+                }
+                /*
+                    * Five types to be split:
+                    * <ins>A</ins><del>B</del>XY<ins>C</ins><del>D</del>
+                    * <ins>A</ins>X<ins>C</ins><del>D</del>
+                    * <ins>A</ins><del>B</del>X<ins>C</ins>
+                    * <ins>A</del>X<ins>C</ins><del>D</del>
+                    * <ins>A</ins><del>B</del>X<del>C</del>
+                    */
+                if ((lastEquality.Length != 0)
+                    && ((pre_ins && pre_del && post_ins && post_del)
+                    || ((lastEquality.Length < editCost / 2)
+                    && ((pre_ins ? 1 : 0) + (pre_del ? 1 : 0) + (post_ins ? 1 : 0)
+                    + (post_del ? 1 : 0)) == 3)))
+                {
+                    // Duplicate record.
+                    diffsList.Insert(equalities.Peek(),
+                                    new Diff(Operation.DELETE, lastEquality));
+                    // Change second copy to insert.
+                    diffsList[equalities.Peek() + 1] = diffsList[equalities.Peek() + 1] with { Operation = Operation.INSERT };
+                    equalities.Pop();  // Throw away the equality we just deleted.
+                    lastEquality = string.Empty;
+                    if (pre_ins && pre_del)
+                    {
+                        // No changes made which could affect previous entry, keep going.
+                        post_ins = post_del = true;
+                        equalities.Clear();
+                    }
+                    else
+                    {
+                        if (equalities.Count > 0)
+                        {
+                            equalities.Pop();
+                        }
+
+                        pointer = equalities.Count > 0 ? equalities.Peek() : -1;
+                        post_ins = post_del = false;
+                    }
+                    changes = true;
+                }
+            }
+            pointer++;
+        }
+
+        return changes ? CleanupMerge(diffsList) : diffsList;
+    }
 }
