@@ -1037,4 +1037,50 @@ public static class StringExtensions
             throw new ArgumentException($"Delta length ({pointer}) smaller than source text length ({sourceText.Length}).");
         }
     }
+
+    /**
+        * loc is a location in text1, compute and return the equivalent location in
+        * text2.
+        * e.g. "The cat" vs "The big cat", 1->1, 5->8
+        * @param diffs List of Diff objects.
+        * @param loc Location within text1.
+        * @return Location within text2.
+        */
+    public static int ConvertLocationInOriginalTextToLocationInFinalText(this IEnumerable<Diff> diffs, int loc)
+    {
+        int currentPositionInOriginalText = 0;
+        int previousPositionInOriginalText = 0;
+        int currentPositionInFinalText = 0;
+        int previousPositionInFinalText = 0;
+
+        foreach (Diff aDiff in diffs)
+        {
+            if (aDiff.Operation != Operation.INSERT)
+            {
+                // Equality or deletion.
+                currentPositionInOriginalText += aDiff.Text.Length;
+            }
+            if (aDiff.Operation != Operation.DELETE)
+            {
+                // Equality or insertion.
+                currentPositionInFinalText += aDiff.Text.Length;
+            }
+            if (currentPositionInOriginalText > loc)
+            {
+                // The location was deleted
+                if (aDiff.Operation == Operation.DELETE)
+                {
+                    return previousPositionInFinalText;
+                }
+
+                break;
+            }
+
+            previousPositionInOriginalText = currentPositionInOriginalText;
+            previousPositionInFinalText = currentPositionInFinalText;
+        }
+
+        // Add the remaining character length.
+        return previousPositionInFinalText + (loc - previousPositionInOriginalText);
+    }
 }

@@ -985,21 +985,38 @@ public class DiffTest
         await Assert.That(actualDiffs).IsEquivalentTo(expectedDiffs);
     }
 
-    // public void XIndexTest()
-    // {
-    //     // Translate a location in text1 to text2.
-    //     List<Diff> diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "a"),
-    //     new Diff(Operation.INSERT, "1234"),
-    //     new Diff(Operation.EQUAL, "xyz")};
-    //     assertEquals("diff_xIndex: Translation on equality.", 5, this.diff_xIndex(diffs, 2));
+    [Test]
+    public async Task ValidLocationInBothTexts()
+    {
+        // Translate a location in text1 to text2.
+        Diff[] diffs = [
+            new Diff(Operation.DELETE, "a"),
+            new Diff(Operation.INSERT, "1234"),
+            new Diff(Operation.EQUAL, "xyz"),
+        ];
+        var expectedFinalLocation = 5;
+        var originalLocation = 2;
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "a"),
-    //     new Diff(Operation.DELETE, "1234"),
-    //     new Diff(Operation.EQUAL, "xyz")};
-    //     assertEquals("diff_xIndex: Translation on deletion.", 1, this.diff_xIndex(diffs, 3));
-    // }
+        var actualFinalLocation = diffs.ConvertLocationInOriginalTextToLocationInFinalText(originalLocation);
+
+        await Assert.That(actualFinalLocation).IsEqualTo(expectedFinalLocation);
+    }
+
+    [Test]
+    public async Task DeletedLocationInFinalText()
+    {
+        Diff[] diffs = [
+            new Diff(Operation.EQUAL, "a"),
+            new Diff(Operation.DELETE, "1234"),
+            new Diff(Operation.EQUAL, "xyz"),
+        ];
+        var expectedFinalLocation = 1;
+        var originalLocation = 3;
+
+        var actualFinalLocation = diffs.ConvertLocationInOriginalTextToLocationInFinalText(originalLocation);
+
+        await Assert.That(actualFinalLocation).IsEqualTo(expectedFinalLocation);
+    }
 
     // public void LevenshteinTest()
     // {
