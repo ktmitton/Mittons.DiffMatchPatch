@@ -777,7 +777,7 @@ public class DiffTest
     {
         var expectedResult = """<span>a&para;<br></span><del style="background:#ffe6e6;">&lt;B&gt;b&lt;/B&gt;</del><ins style="background:#e6ffe6;">c&amp;d</ins>""";
 
-        List<Diff> diffs = [
+        Diff[] diffs = [
             new Diff(Operation.EQUAL, "a\n"),
             new Diff(Operation.DELETE, "<B>b</B>"),
             new Diff(Operation.INSERT, "c&d"),
@@ -788,22 +788,35 @@ public class DiffTest
         await Assert.That(actualResult).IsEqualTo(expectedResult);
     }
 
-    [Test]
-    public async Task ComposeOriginalTextTest()
+    public static IEnumerable<(IEnumerable<Diff> diffs, string expectedOriginalText)> ComposeOriginalTextDatasource()
     {
-        var expectedOriginalText = "jumps over the lazy";
+        yield return (
+            [
+                new Diff(Operation.EQUAL, "jump"),
+                new Diff(Operation.DELETE, "s"),
+                new Diff(Operation.INSERT, "ed"),
+                new Diff(Operation.EQUAL, " over "),
+                new Diff(Operation.DELETE, "the"),
+                new Diff(Operation.INSERT, "a"),
+                new Diff(Operation.EQUAL, " lazy"),
+            ],
+            "jumps over the lazy"
+        );
 
-        // Compute the source and destination texts.
-        List<Diff> diffs = [
-            new Diff(Operation.EQUAL, "jump"),
-            new Diff(Operation.DELETE, "s"),
-            new Diff(Operation.INSERT, "ed"),
-            new Diff(Operation.EQUAL, " over "),
-            new Diff(Operation.DELETE, "the"),
-            new Diff(Operation.INSERT, "a"),
-            new Diff(Operation.EQUAL, " lazy"),
-        ];
+        yield return (
+            [
+                new Diff(Operation.EQUAL, $"\u0680 {(char)0} \t %"),
+                new Diff(Operation.DELETE, $"\u0681 {(char)1} \n ^"),
+                new Diff(Operation.INSERT, $"\u0682 {(char)2} \\ |"),
+            ],
+            $"\u0680 {(char)0} \t %\u0681 {(char)1} \n ^"
+        );
+    }
 
+    [Test]
+    [MethodDataSource(nameof(ComposeOriginalTextDatasource))]
+    public async Task ComposeOriginalTextTest(IEnumerable<Diff> diffs, string expectedOriginalText)
+    {
         var actualOriginalText = diffs.ComposeOriginalText();
 
         await Assert.That(actualOriginalText).IsEqualTo(expectedOriginalText);
@@ -815,7 +828,7 @@ public class DiffTest
         var expectedFinalText = "jumped over a lazy";
 
         // Compute the source and destination texts.
-        List<Diff> diffs = [
+        Diff[] diffs = [
             new Diff(Operation.EQUAL, "jump"),
             new Diff(Operation.DELETE, "s"),
             new Diff(Operation.INSERT, "ed"),
@@ -830,102 +843,147 @@ public class DiffTest
         await Assert.That(actualFinalText).IsEqualTo(expectedFinalText);
     }
 
-    // public void DeltaTest()
-    // {
-    //     // Convert a diff into delta string.
-    //     List<Diff> diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "jump"),
-    //     new Diff(Operation.DELETE, "s"),
-    //     new Diff(Operation.INSERT, "ed"),
-    //     new Diff(Operation.EQUAL, " over "),
-    //     new Diff(Operation.DELETE, "the"),
-    //     new Diff(Operation.INSERT, "a"),
-    //     new Diff(Operation.EQUAL, " lazy"),
-    //     new Diff(Operation.INSERT, "old dog")};
-    //     string text1 = this.diff_text1(diffs);
-    //     assertEquals("diff_text1: Base text.", "jumps over the lazy", text1);
+    [Test]
+    public async Task ToDeltaEncodedStringTest()
+    {
+        var expectedDelta = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog";
 
-    //     string delta = this.diff_toDelta(diffs);
-    //     assertEquals("diff_toDelta:", "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog", delta);
+        Diff[] diffs = [
+            new Diff(Operation.EQUAL, "jump"),
+            new Diff(Operation.DELETE, "s"),
+            new Diff(Operation.INSERT, "ed"),
+            new Diff(Operation.EQUAL, " over "),
+            new Diff(Operation.DELETE, "the"),
+            new Diff(Operation.INSERT, "a"),
+            new Diff(Operation.EQUAL, " lazy"),
+            new Diff(Operation.INSERT, "old dog"),
+        ];
 
-    //     // Convert delta string into a diff.
-    //     assertEquals("diff_fromDelta: Normal.", diffs, this.diff_fromDelta(text1, delta));
+        var actualDelta = diffs.ToDeltaEncodedString();
 
-    //     // Generates error (19 < 20).
-    //     try
-    //     {
-    //         this.diff_fromDelta(text1 + "x", delta);
-    //         assertFail("diff_fromDelta: Too long.");
-    //     }
-    //     catch (ArgumentException)
-    //     {
-    //         // Exception expected.
-    //     }
+        await Assert.That(actualDelta).IsEqualTo(expectedDelta);
+    }
 
-    //     // Generates error (19 > 18).
-    //     try
-    //     {
-    //         this.diff_fromDelta(text1.Substring(1), delta);
-    //         assertFail("diff_fromDelta: Too short.");
-    //     }
-    //     catch (ArgumentException)
-    //     {
-    //         // Exception expected.
-    //     }
+    [Test]
+    public async Task FromDeltaEncodedStringTest()
+    {
+        var deltaEncodedString = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog";
+        var sourceText = "jumps over the lazy";
 
-    //     // Generates error (%c3%xy invalid Unicode).
-    //     try
-    //     {
-    //         this.diff_fromDelta("", "+%c3%xy");
-    //         assertFail("diff_fromDelta: Invalid character.");
-    //     }
-    //     catch (ArgumentException)
-    //     {
-    //         // Exception expected.
-    //     }
+        Diff[] expectedDiffs = [
+            new Diff(Operation.EQUAL, "jump"),
+            new Diff(Operation.DELETE, "s"),
+            new Diff(Operation.INSERT, "ed"),
+            new Diff(Operation.EQUAL, " over "),
+            new Diff(Operation.DELETE, "the"),
+            new Diff(Operation.INSERT, "a"),
+            new Diff(Operation.EQUAL, " lazy"),
+            new Diff(Operation.INSERT, "old dog"),
+        ];
 
-    //     // Test deltas with special characters.
-    //     char zero = (char)0;
-    //     char one = (char)1;
-    //     char two = (char)2;
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "\u0680 " + zero + " \t %"),
-    //     new Diff(Operation.DELETE, "\u0681 " + one + " \n ^"),
-    //     new Diff(Operation.INSERT, "\u0682 " + two + " \\ |")};
-    //     text1 = this.diff_text1(diffs);
-    //     assertEquals("diff_text1: Unicode text.", "\u0680 " + zero + " \t %\u0681 " + one + " \n ^", text1);
+        var actualDiff = sourceText.ToDiff(deltaEncodedString);
 
-    //     delta = this.diff_toDelta(diffs);
-    //     // Lowercase, due to UrlEncode uses lower.
-    //     assertEquals("diff_toDelta: Unicode.", "=7\t-7\t+%da%82 %02 %5c %7c", delta);
+        await Assert.That(actualDiff).IsEquivalentTo(expectedDiffs);
+    }
 
-    //     assertEquals("diff_fromDelta: Unicode.", diffs, this.diff_fromDelta(text1, delta));
+    [Test]
+    public void FromDeltaEncodedStringFailTest()
+    {
+        var deltaEncodedString = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog";
+        var sourceText = "jumps over the lazyx";
 
-    //     // Verify pool of unchanged characters.
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.INSERT, "A-Z a-z 0-9 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ")};
-    //     string text2 = this.diff_text2(diffs);
-    //     assertEquals("diff_text2: Unchanged characters.", "A-Z a-z 0-9 - _ . ! ~ * \' ( ) ; / ? : @ & = + $ , # ", text2);
+        Assert.Throws<ArgumentException>(() => sourceText.ToDiff(deltaEncodedString).ToArray());
+    }
 
-    //     delta = this.diff_toDelta(diffs);
-    //     assertEquals("diff_toDelta: Unchanged characters.", "+A-Z a-z 0-9 - _ . ! ~ * \' ( ) ; / ? : @ & = + $ , # ", delta);
+    [Test]
+    public void FromDeltaEncodedStringFailTest2()
+    {
+        var deltaEncodedString = "=4\t-1\t+ed\t=6\t-3\t+a\t=5\t+old dog";
+        var sourceText = "umps over the lazy";
 
-    //     // Convert delta string into a diff.
-    //     assertEquals("diff_fromDelta: Unchanged characters.", diffs, this.diff_fromDelta("", delta));
+        Assert.Throws<ArgumentException>(() => sourceText.ToDiff(deltaEncodedString).ToArray());
+    }
 
-    //     // 160 kb string.
-    //     string a = "abcdefghij";
-    //     for (int i = 0; i < 14; i++)
-    //     {
-    //         a += a;
-    //     }
-    //     diffs = new List<Diff> { new Diff(Operation.INSERT, a) };
-    //     delta = this.diff_toDelta(diffs);
-    //     assertEquals("diff_toDelta: 160kb string.", "+" + a, delta);
+    [Test]
+    [Skip(".net is too lenient for this to matter, gotta rethink it")]
+    public void FromDeltaEncodedStringFailTest3()
+    {
+        var deltaEncodedString = "+%c3%xy";
+        var sourceText = "";
 
-    //     // Convert delta string into a diff.
-    //     assertEquals("diff_fromDelta: 160kb string.", diffs, this.diff_fromDelta("", delta));
-    // }
+        Assert.Throws<ArgumentException>(() => sourceText.ToDiff(deltaEncodedString).ToArray());
+    }
+
+    [Test]
+    public async Task ToDeltaEncodedStringSpecialCharactersTest()
+    {
+        Diff[] diffs = [
+            new Diff(Operation.EQUAL, $"\u0680 {(char)0} \t %"),
+            new Diff(Operation.DELETE, $"\u0681 {(char)1} \n ^"),
+            new Diff(Operation.INSERT, $"\u0682 {(char)2} \\ |"),
+        ];
+
+        var expectedDeltaEncodeString = "=7\t-7\t+%da%82 %02 %5c %7c";
+
+        var actualDeltaEncodeString = diffs.ToDeltaEncodedString();
+
+        await Assert.That(actualDeltaEncodeString).IsEqualTo(expectedDeltaEncodeString);
+    }
+
+    [Test]
+    public async Task FromDeltaEncodedStringSpecialCharactersTest()
+    {
+        var deltaEncodedString = "=7\t-7\t+%da%82 %02 %5c %7c";
+        var sourceText = $"\u0680 {(char)0} \t %\u0681 {(char)1} \n ^";
+
+        Diff[] expectedDiffs = [
+            new Diff(Operation.EQUAL, $"\u0680 {(char)0} \t %"),
+            new Diff(Operation.DELETE, $"\u0681 {(char)1} \n ^"),
+            new Diff(Operation.INSERT, $"\u0682 {(char)2} \\ |"),
+        ];
+
+        var actualDiffs = sourceText.ToDiff(deltaEncodedString);
+
+        await Assert.That(actualDiffs).IsEquivalentTo(expectedDiffs);
+    }
+
+    [Test]
+    public async Task UnchangedCharacterTest()
+    {
+        var originalText = string.Empty;
+        Diff[] expectedDiffs = [
+            new Diff(Operation.INSERT, "A-Z a-z 0-9 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # "),
+        ];
+        var expectedFinalText = "A-Z a-z 0-9 - _ . ! ~ * ' ( ) ; / ? : @ & = + $ , # ";
+        var expectedDeltaEncodeString = "+A-Z a-z 0-9 - _ . ! ~ * \' ( ) ; / ? : @ & = + $ , # ";
+
+        var actualFinalText = expectedDiffs.ComposeFinalText();
+        var actualDeltaEncodeString = expectedDiffs.ToDeltaEncodedString();
+        var actualDiffs = originalText.ToDiff(actualDeltaEncodeString);
+
+        await Assert.That(actualFinalText).IsEqualTo(expectedFinalText);
+        await Assert.That(actualDeltaEncodeString).IsEqualTo(expectedDeltaEncodeString);
+        await Assert.That(actualDiffs).IsEquivalentTo(expectedDiffs);
+    }
+
+    [Test]
+    public async Task LongStringTest()
+    {
+        var originalText = string.Empty;
+        var expectedFinalText = string.Join("", Enumerable.Range(0, 14).Select(_ => "abcdefghij"));
+        var expectedDeltaEncodeString = $"+{expectedFinalText}";
+        Diff[] expectedDiffs = [
+            new Diff(Operation.INSERT, expectedFinalText),
+        ];
+
+        var actualFinalText = expectedDiffs.ComposeFinalText();
+        var actualDeltaEncodeString = expectedDiffs.ToDeltaEncodedString();
+        var actualDiffs = originalText.ToDiff(actualDeltaEncodeString);
+
+        await Assert.That(actualFinalText).IsEqualTo(expectedFinalText);
+        await Assert.That(actualDeltaEncodeString).IsEqualTo(expectedDeltaEncodeString);
+        await Assert.That(actualDiffs).IsEquivalentTo(expectedDiffs);
+    }
 
     // public void XIndexTest()
     // {

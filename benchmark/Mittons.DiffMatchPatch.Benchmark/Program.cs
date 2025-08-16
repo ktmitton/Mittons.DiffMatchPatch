@@ -3,4 +3,5 @@ using BenchmarkDotNet.Running;
 using Mittons.DiffMatchPatch.Benchmark;
 
 Console.WriteLine("Hello, World!");
-BenchmarkRunner.Run<StringBuildingBenchmark>();
+// BenchmarkRunner.Run<StringBuildingBenchmark>();
+BenchmarkRunner.Run<DeltaBenchmarks>();

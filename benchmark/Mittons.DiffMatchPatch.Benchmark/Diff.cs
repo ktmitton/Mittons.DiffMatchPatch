@@ -1,8 +1,7 @@
 using System.Text;
 using System.Web;
-using Mittons.DiffMatchPatch.Types;
 
-namespace Mittons.DiffMatchPatch.Models;
+namespace Mittons.DiffMatchPatch.Benchmark;
 
 /**
     * Class representing one diff operation.
@@ -27,7 +26,7 @@ public record Diff(Operation Operation, string Text)
         * @param str The string to encode.
         * @return The encoded string.
         */
-    private string ToUriEncodedString()
+    public string ToUriEncodedString()
     {
         // C# is overzealous in the replacements.  Walk back on a few.
         return new StringBuilder(HttpUtility.UrlEncode(Text))
@@ -39,6 +38,28 @@ public record Diff(Operation Operation, string Text)
             .Replace("%24", "$").Replace("%2c", ",").Replace("%23", "#")
             .Replace("%7e", "~")
             .ToString();
+    }
+
+    public string ToDeltaEncodedString2()
+    {
+        return Operation switch
+        {
+            Operation.INSERT => $"+{ToUriEncodedString()}\t",
+            Operation.DELETE => $"-{Text.Length}\t",
+            Operation.EQUAL => $"={Text.Length}\t",
+            _ => throw new ArgumentOutOfRangeException()
+        };
+    }
+
+    public string ToDeltaEncodedString()
+    {
+        return Operation switch
+        {
+            Operation.INSERT => $"+{ToUriEncodedString()}",
+            Operation.DELETE => $"-{Text.Length}",
+            Operation.EQUAL => $"={Text.Length}",
+            _ => throw new ArgumentOutOfRangeException()
+        };
     }
 
     public Diff Append(string value)

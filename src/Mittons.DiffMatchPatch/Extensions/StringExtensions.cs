@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Web;
 using Mittons.DiffMatchPatch.Models;
 using Mittons.DiffMatchPatch.Types;
 
@@ -757,7 +758,7 @@ public static class StringExtensions
         // Always equal to equalities[equalitiesLength-1][1]
         string lastEquality = string.Empty;
         int pointer = 0;  // Index of current position.
-                            // Is there an insertion operation before the last equality.
+                          // Is there an insertion operation before the last equality.
         bool pre_ins = false;
         // Is there a deletion operation before the last equality.
         bool pre_del = false;
@@ -910,5 +911,130 @@ public static class StringExtensions
         }
 
         return text.ToString();
+    }
+
+    /**
+        * Encodes a string with URI-style % escaping.
+        * Compatible with JavaScript's encodeURI function.
+        *
+        * @param str The string to encode.
+        * @return The encoded string.
+        */
+    public static string EncodeUri(this string str)
+    {
+        // C# is overzealous in the replacements.  Walk back on a few.
+        return new StringBuilder(HttpUtility.UrlEncode(str))
+            .Replace('+', ' ').Replace("%20", " ").Replace("%21", "!")
+            .Replace("%2a", "*").Replace("%27", "'").Replace("%28", "(")
+            .Replace("%29", ")").Replace("%3b", ";").Replace("%2f", "/")
+            .Replace("%3f", "?").Replace("%3a", ":").Replace("%40", "@")
+            .Replace("%26", "&").Replace("%3d", "=").Replace("%2b", "+")
+            .Replace("%24", "$").Replace("%2c", ",").Replace("%23", "#")
+            .Replace("%7e", "~")
+            .ToString();
+    }
+
+    /**
+        * Crush the diff into an encoded string which describes the operations
+        * required to transform text1 into text2.
+        * E.g. =3\t-2\t+ing  -> Keep 3 chars, delete 2 chars, insert 'ing'.
+        * Operations are tab-separated.  Inserted text is escaped using %xx
+        * notation.
+        * @param diffs Array of Diff objects.
+        * @return Delta text.
+        */
+    public static string ToDeltaEncodedString(this IEnumerable<Diff> diffs)
+    {
+        StringBuilder text = new();
+
+        foreach (Diff aDiff in diffs)
+        {
+            if (aDiff.Text.Length == 0)
+            {
+                continue;
+            }
+
+            switch (aDiff.Operation)
+            {
+                case Operation.INSERT:
+                    text.Append($"+{aDiff.Text.EncodeUri()}\t");
+                    break;
+                case Operation.DELETE:
+                    text.Append($"-{aDiff.Text.Length}\t");
+                    break;
+                case Operation.EQUAL:
+                    text.Append($"={aDiff.Text.Length}\t");
+                    break;
+            }
+        }
+
+        return text.Length == 0 ? string.Empty : text.ToString()[..^1];
+    }
+
+    /**
+     * Given the original text1, and an encoded string which describes the
+     * operations required to transform text1 into text2, compute the full diff.
+     * @param text1 Source string for the diff.
+     * @param delta Delta text.
+     * @return Array of Diff objects or null if invalid.
+     * @throws ArgumentException If invalid input.
+     */
+    public static IEnumerable<Diff> ToDiff(this string sourceText, string delta)
+    {
+        int pointer = 0;
+        string text;
+
+        foreach (string token in delta.Split(["\t"], StringSplitOptions.None))
+        {
+            if (token.Length == 0)
+            {
+                continue;
+            }
+
+            // Each token begins with a one character parameter which specifies the
+            // operation of this token (delete, insert, equality).
+            var operation = token[0].ToOperation();
+            var value = token[1..];
+
+            switch (operation)
+            {
+                case Operation.INSERT:
+                    text = HttpUtility.UrlDecode(value.Replace("+", "%2b"));
+
+                    break;
+                case Operation.DELETE:
+                case Operation.EQUAL:
+                    if (!int.TryParse(value, out var n))
+                    {
+                        throw new ArgumentException($"Invalid number in diff_fromDelta: {value}");
+                    }
+
+                    if (n < 0)
+                    {
+                        throw new ArgumentException($"Negative number in diff_fromDelta: {value}");
+                    }
+
+                    try
+                    {
+                        text = sourceText.Substring(pointer, n);
+                        pointer += n;
+                    }
+                    catch (ArgumentOutOfRangeException e)
+                    {
+                        throw new ArgumentException($"Delta length ({pointer}) larger than source text length ({sourceText.Length}).", e);
+                    }
+
+                    break;
+                default:
+                    throw new ArgumentException($"Invalid diff operation in diff_fromDelta: {token[0]}");
+            }
+
+            yield return new Diff(operation, text);
+        }
+
+        if (pointer != sourceText.Length)
+        {
+            throw new ArgumentException($"Delta length ({pointer}) smaller than source text length ({sourceText.Length}).");
+        }
     }
 }
