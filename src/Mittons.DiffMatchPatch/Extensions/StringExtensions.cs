@@ -1083,4 +1083,38 @@ public static class StringExtensions
         // Add the remaining character length.
         return previousPositionInFinalText + (loc - previousPositionInOriginalText);
     }
+
+    /**
+        * Compute the Levenshtein distance; the number of inserted, deleted or
+        * substituted characters.
+        * @param diffs List of Diff objects.
+        * @return Number of changes.
+        */
+    public static int CalculateLevenshteinDistance(this IEnumerable<Diff> diffs)
+    {
+        int levenshtein = 0;
+        int insertions = 0;
+        int deletions = 0;
+
+        foreach (Diff aDiff in diffs)
+        {
+            switch (aDiff.Operation)
+            {
+                case Operation.INSERT:
+                    insertions += aDiff.Text.Length;
+                    break;
+                case Operation.DELETE:
+                    deletions += aDiff.Text.Length;
+                    break;
+                case Operation.EQUAL:
+                    // A deletion and an insertion is one substitution.
+                    levenshtein += Math.Max(insertions, deletions);
+                    insertions = 0;
+                    deletions = 0;
+                    break;
+            }
+        }
+
+        return levenshtein + Math.Max(insertions, deletions);
+    }
 }

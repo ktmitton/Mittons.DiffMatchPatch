@@ -1018,26 +1018,47 @@ public class DiffTest
         await Assert.That(actualFinalLocation).IsEqualTo(expectedFinalLocation);
     }
 
-    // public void LevenshteinTest()
-    // {
-    //     List<Diff> diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "abc"),
-    //     new Diff(Operation.INSERT, "1234"),
-    //     new Diff(Operation.EQUAL, "xyz")};
-    //     assertEquals("diff_levenshtein: Levenshtein with trailing equality.", 4, this.diff_levenshtein(diffs));
+    [Test]
+    [MethodDataSource(nameof(LevenshteinDatasource))]
+    public async Task LevenshteinTest(string description, IEnumerable<Diff> diffs, int expectedDistance)
+    {
+        var actualDistance = diffs.CalculateLevenshteinDistance();
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.EQUAL, "xyz"),
-    //     new Diff(Operation.DELETE, "abc"),
-    //     new Diff(Operation.INSERT, "1234")};
-    //     assertEquals("diff_levenshtein: Levenshtein with leading equality.", 4, this.diff_levenshtein(diffs));
+        await Assert.That(actualDistance).IsEqualTo(expectedDistance);
+    }
 
-    //     diffs = new List<Diff> {
-    //     new Diff(Operation.DELETE, "abc"),
-    //     new Diff(Operation.EQUAL, "xyz"),
-    //     new Diff(Operation.INSERT, "1234")};
-    //     assertEquals("diff_levenshtein: Levenshtein with middle equality.", 7, this.diff_levenshtein(diffs));
-    // }
+    public static IEnumerable<(string description, IEnumerable<Diff> diffs, int expectedDistance)> LevenshteinDatasource()
+    {
+        yield return (
+            "Trailing equality",
+            [
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.INSERT, "1234"),
+                new Diff(Operation.EQUAL, "xyz"),
+            ],
+            4
+        );
+
+        yield return (
+            "Leading equality",
+            [
+                new Diff(Operation.EQUAL, "xyz"),
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.INSERT, "1234"),
+            ],
+            4
+        );
+
+        yield return (
+            "Middle equality",
+            [
+                new Diff(Operation.DELETE, "abc"),
+                new Diff(Operation.EQUAL, "xyz"),
+                new Diff(Operation.INSERT, "1234"),
+            ],
+            7
+        );
+    }
 
     // public void BisectTest()
     // {
