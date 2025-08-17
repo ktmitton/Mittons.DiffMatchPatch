@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -13,184 +14,6 @@ public static class StringExtensions
         var newIndex = @this[startIndex..].IndexOf(value);
 
         return newIndex == -1 ? -1 : newIndex + startIndex;
-    }
-
-    public static int CommonOverlapLength(this ReadOnlySpan<char> @this, ReadOnlySpan<char> other)
-    {
-        int maximumOverlap = Math.Min(@this.Length, other.Length);
-
-        if (maximumOverlap == 0)
-        {
-            return 0;
-        }
-
-        var thisSpan = @this[^maximumOverlap..];
-        var otherSpan = other[..maximumOverlap];
-
-        if (thisSpan.SequenceEqual(otherSpan))
-        {
-            return maximumOverlap;
-        }
-
-        var best = 0;
-        for (int i = maximumOverlap - 1; i > -1; --i)
-        {
-            var pattern = thisSpan[i..];
-            if (otherSpan.StartsWith(pattern))
-            {
-                best = i;
-
-                continue;
-            }
-
-            if (otherSpan.IndexOf(pattern, StringComparison.Ordinal) == -1)
-            {
-                break;
-            }
-        }
-
-        return best == 0 ? 0 : maximumOverlap - best;
-    }
-
-    public static int CommonSuffixLength(this ReadOnlySpan<char> @this, ReadOnlySpan<char> other)
-    {
-        var maximumSharedLength = Math.Min(@this.Length, other.Length);
-
-        for (int i = 1; i <= maximumSharedLength; ++i)
-        {
-            if (@this[^i] != other[^i])
-            {
-                return i - 1;
-            }
-        }
-
-        return maximumSharedLength;
-    }
-
-    public static int CommonPrefixLength(this string @this, string other)
-        => @this.AsSpan().CommonPrefixLength(other.AsSpan());
-
-    public static int CommonOverlapLength(this string @this, string other)
-        => @this.AsSpan().CommonOverlapLength(other);
-
-    public static int CommonSuffixLength(this string @this, string other)
-        => @this.AsSpan().CommonSuffixLength(other);
-
-    /// <summary>
-    /// Finds the largest string shared between two texts that is at least half the length of the longest text.
-    /// </summary>
-    /// <param name="this"></param>
-    /// <param name="other"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    /// <remarks>
-    /// When you break the longest text into quarters, the variations spanning the fewest quarters are:
-    /// <list type="bullet">
-    /// <item>q1->q2</item>
-    /// <item>q2->q3</item>
-    /// <item>q3->q4</item>
-    /// </list>
-    /// This means that we only need to search starting with q2 and q3, any overlaps into q1 and q4 will naturally
-    /// be picked up.
-    /// <para>
-    /// </para>
-    /// </remarks>
-    public static CommonMiddleDetails CommonMiddle(this string @this, string other, CancellationToken cancellationToken = default)
-    {
-        if (cancellationToken == default)
-        {
-            return new();
-        }
-
-        var (longtext, shorttext) = @this.Length > other.Length ? (@this, other) : (other, @this);
-        if ((longtext.Length < 4) || ((shorttext.Length * 2) < longtext.Length))
-        {
-            return new();
-        }
-
-        // First check if the second quarter is the seed for a half-match.
-        var secondQuarterCommonMiddle = CommonMiddleFromIndex(longtext, shorttext, (longtext.Length + 3) / 4);
-        var thirdQuarterCommonMiddle = CommonMiddleFromIndex(longtext, shorttext, (longtext.Length + 1) / 2);
-
-        var commonMiddleDetails = secondQuarterCommonMiddle > thirdQuarterCommonMiddle ? secondQuarterCommonMiddle : thirdQuarterCommonMiddle;
-
-        if (commonMiddleDetails.CommonMiddle.Length == 0)
-        {
-            return new();
-        }
-
-        if (@this.Length > other.Length)
-        {
-            return commonMiddleDetails;
-        }
-
-        return new(commonMiddleDetails.RightPrefix, commonMiddleDetails.RightSuffix, commonMiddleDetails.LeftPrefix, commonMiddleDetails.LeftSuffix, commonMiddleDetails.CommonMiddle);
-    }
-    /**
-        * Does a Substring of shorttext exist within longtext such that the
-        * Substring is at least half the length of longtext?
-        * @param longtext Longer string.
-        * @param shorttext Shorter string.
-        * @param i Start index of quarter length Substring within longtext.
-        * @return Five element string array, containing the prefix of longtext, the
-        *     suffix of longtext, the prefix of shorttext, the suffix of shorttext
-        *     and the common middle.  Or null if there was no match.
-        */
-    /// <summary>
-    /// Attempts to find the longest common string in the middle of two texts that is at least half the size of the longest text.
-    /// </summary>
-    /// <param name="longerText">The longer of the two texts being compared.</param>
-    /// <param name="shorterText">The shorter of the two texts being compared.</param>
-    /// <param name="startIndex">The start index of the quarter used as the search term.</param>
-    /// <returns></returns>
-    /// <remarks>
-    /// When the a quarter is searched, the search term is 1/4 the length of the longest text, starting at the beginning of the quarter.
-    /// The shortest text is then searched for all occurences of that search term, filtered to the result that has the most shared
-    /// characters on either side of the search result. If the longest result is less than half the length of the longest text, nothing
-    /// is returned.
-    /// <para>
-    /// The commonSuffixLength and commonPrefixLength seem a little counter intuitive since they call CommonPrefixLength and
-    /// CommonSuffixLength respectively. What's happening is the CommonPrefixLength function is called on the text after the matched
-    /// searched term, and the CommonSuffixLength is called on the text before the matched search term.
-    /// </para>
-    /// <para>
-    /// For example, let's say the search term was 567, and the texts were 123456789012 and 023456780. We'd run the CommonPrefixLength
-    /// on 89012 and 80, with 8 being the only common character, this would be our suffix for the final common string. CommonSuffixLength
-    /// would be run on 1234 and 0234, with 234 being the common characters, which are the prefix for the final common string. This means
-    /// the final result is 234 + 567 + 8, so 2345678.
-    /// </para>
-    /// </remarks>
-    private static CommonMiddleDetails CommonMiddleFromIndex(ReadOnlySpan<char> longerText, ReadOnlySpan<char> shorterText, int startIndex)
-    {
-        var searchTerm = longerText.Slice(startIndex, longerText.Length / 4);
-
-        ReadOnlySpan<char> bestCommonString = [];
-        ReadOnlySpan<char> uniquePrefixToLongestText = [];
-        ReadOnlySpan<char> uniqueSuffixToLongestText = [];
-        ReadOnlySpan<char> uniquePrefixToShortestText = [];
-        ReadOnlySpan<char> uniqueSuffixToShortestText = [];
-
-        for (int i = shorterText.IndexOf(searchTerm); i != -1; i = shorterText.IndexOf(searchTerm, i + 1))
-        {
-            int commonSuffixLength = longerText[startIndex..].CommonPrefixLength(shorterText[i..]);
-            int commonPrefixLength = longerText[..startIndex].CommonSuffixLength(shorterText[..i]);
-
-            if (bestCommonString.Length < commonPrefixLength + commonSuffixLength)
-            {
-                bestCommonString = shorterText.Slice(i - commonPrefixLength, commonPrefixLength + commonSuffixLength);
-                uniquePrefixToLongestText = longerText[..(startIndex - commonPrefixLength)];
-                uniqueSuffixToLongestText = longerText[(startIndex + commonSuffixLength)..];
-                uniquePrefixToShortestText = shorterText[..(i - commonPrefixLength)];
-                uniqueSuffixToShortestText = shorterText[(i + commonSuffixLength)..];
-            }
-        }
-
-        if (bestCommonString.Length * 2 < longerText.Length)
-        {
-            return new();
-        }
-
-        return new CommonMiddleDetails(uniquePrefixToLongestText, uniqueSuffixToLongestText, uniquePrefixToShortestText, uniqueSuffixToShortestText, bestCommonString);
     }
 
     /**
@@ -281,7 +104,8 @@ public static class StringExtensions
         var deletedText = deletedTextBuilder.ToString();
         var insertedText = insertedTextBuilder.ToString();
 
-        var commonLength = deletedText.CommonSuffixLength(insertedText);
+        deletedText.TryFindCommonSuffix(insertedText, out var commonSuffixSpan);
+        var commonLength = commonSuffixSpan.Length;
         var nextRetainedText = commonLength == 0 ? nextRetainedTextBuilder.ToString() : $"{insertedText[^commonLength..]}{nextRetainedTextBuilder}";
         if (commonLength > 0)
         {
@@ -289,7 +113,8 @@ public static class StringExtensions
             deletedText = deletedText[..^commonLength];
         }
 
-        commonLength = deletedText.CommonPrefixLength(insertedText);
+        deletedText.TryFindCommonPrefix(insertedText, out var commonPrefixSpan);
+        commonLength = commonPrefixSpan.Length;
         if (commonLength > 0)
         {
             previousRetainedTextBuilder.Append(insertedText[..commonLength]);
@@ -484,7 +309,8 @@ public static class StringExtensions
             string equality2 = currentDiff.Text;
 
             // First, shift the edit as far left as possible
-            commonOffset = equality1.CommonSuffixLength(edit);
+            equality1.TryFindCommonSuffix(edit, out var commonSuffixSpan);
+            commonOffset = commonSuffixSpan.Length;
             if (commonOffset > 0)
             {
                 var commonString = edit[^commonOffset..];
@@ -692,46 +518,121 @@ public static class StringExtensions
         //   -> <ins>def</ins>xxx<del>abc</del>
         // Only extract an overlap if it is as big as the edit ahead or behind it.
         pointer = 1;
+        // Diff? previousDiff = null;
+
         while (pointer < normalizedDiffs.Count)
         {
+            // var currentDiff = normalizedDiffs[pointer];
+
+            // pointer++;
+
+            // if (currentDiff.Operation == Operation.DELETE)
+            // {
+            //     previousDiff = currentDiff;
+
+            //     continue;
+            // }
+
+            // if (previousDiff is null || currentDiff.Operation == Operation.EQUAL)
+            // {
+            //     if (previousDiff is not null)
+            //     {
+            //         yield return previousDiff;
+
+            //         previousDiff = null;
+            //     }
+
+            //     yield return currentDiff;
+
+            //     continue;
+            // }
+
+            // string deletion = previousDiff.Text;
+            // string insertion = normalizedDiffs[pointer].Text;
+
+            // var minimumLength = Math.Min(deletion.Length, insertion.Length) / 2.0;
+
+            // var deletionEndsWithInsertion = deletion.TryFindCommonOverlap(insertion, out var commonOverlapSpan1) && commonOverlapSpan1.Length >= minimumLength;
+            // var insertionEndsWithDeletion = insertion.TryFindCommonOverlap(deletion, out var commonOverlapSpan2) && commonOverlapSpan2.Length >= minimumLength;
+
+            // if (!deletionEndsWithInsertion && !insertionEndsWithDeletion)
+            // {
+            //     // No overlap found.
+            //     yield return previousDiff;
+            //     yield return currentDiff;
+
+            //     previousDiff = null;
+
+            //     continue;
+            // }
+
+            // if (deletionEndsWithInsertion &&commonOverlapSpan1.Length >= commonOverlapSpan2.Length)
+            // {
+            //     // Overlap found.
+            //     // Insert an equality and trim the surrounding edits.
+            //     normalizedDiffs.Insert(pointer, new Diff(Operation.EQUAL,
+            //         insertion.Substring(0, commonOverlapSpan1.Length)));
+            //     normalizedDiffs[pointer - 1] = normalizedDiffs[pointer - 1] with
+            //     {
+            //         Text = deletion[..^commonOverlapSpan1.Length]
+            //     };
+            //     normalizedDiffs[pointer + 1] = normalizedDiffs[pointer + 1] with
+            //     {
+            //         Text = insertion[commonOverlapSpan1.Length..]
+            //     };
+            //     pointer++;
+            // }
+            // else if (insertionEndsWithDeletion)
+            // {
+            //     if (commonOverlapSpan2.Length >= minimumLength)
+            //     {
+            //         // Reverse overlap found.
+            //         // Insert an equality and swap and trim the surrounding edits.
+            //         normalizedDiffs.Insert(pointer, new Diff(Operation.EQUAL, deletion[..commonOverlapSpan2.Length]));
+            //         normalizedDiffs[pointer - 1] = new(Operation.INSERT, insertion[..^commonOverlapSpan2.Length]);
+            //         normalizedDiffs[pointer + 1] = new(Operation.DELETE, deletion[commonOverlapSpan2.Length..]);
+            //         pointer++;
+            //     }
+            // }
+
             if (normalizedDiffs[pointer - 1].Operation == Operation.DELETE &&
-                normalizedDiffs[pointer].Operation == Operation.INSERT)
+                    normalizedDiffs[pointer].Operation == Operation.INSERT)
             {
                 string deletion = normalizedDiffs[pointer - 1].Text;
                 string insertion = normalizedDiffs[pointer].Text;
-                int overlap_length1 = CommonOverlapLength(deletion, insertion);
-                int overlap_length2 = CommonOverlapLength(insertion, deletion);
-                if (overlap_length1 >= overlap_length2)
+                var deletionEndsWithInsertion = deletion.TryFindCommonOverlap(insertion, out var commonOverlapSpan1);
+                var insertionEndsWithDeletion = insertion.TryFindCommonOverlap(deletion, out var commonOverlapSpan2);
+
+                if (deletionEndsWithInsertion && (!insertionEndsWithDeletion || commonOverlapSpan1.Length >= commonOverlapSpan2.Length))
                 {
-                    if (overlap_length1 >= deletion.Length / 2.0 ||
-                        overlap_length1 >= insertion.Length / 2.0)
+                    if (commonOverlapSpan1.Length >= deletion.Length / 2.0 ||
+                        commonOverlapSpan1.Length >= insertion.Length / 2.0)
                     {
                         // Overlap found.
                         // Insert an equality and trim the surrounding edits.
                         normalizedDiffs.Insert(pointer, new Diff(Operation.EQUAL,
-                            insertion.Substring(0, overlap_length1)));
+                            insertion.Substring(0, commonOverlapSpan1.Length)));
                         normalizedDiffs[pointer - 1] = normalizedDiffs[pointer - 1] with
                         {
-                            Text = deletion.Substring(0, deletion.Length - overlap_length1)
+                            Text = deletion[..^commonOverlapSpan1.Length]
                         };
                         normalizedDiffs[pointer + 1] = normalizedDiffs[pointer + 1] with
                         {
-                            Text = insertion.Substring(overlap_length1)
+                            Text = insertion[commonOverlapSpan1.Length..]
                         };
                         pointer++;
                     }
                 }
-                else
+                else if (insertionEndsWithDeletion)
                 {
-                    if (overlap_length2 >= deletion.Length / 2.0 ||
-                        overlap_length2 >= insertion.Length / 2.0)
+                    if (commonOverlapSpan2.Length >= deletion.Length / 2.0 ||
+                        commonOverlapSpan2.Length >= insertion.Length / 2.0)
                     {
                         // Reverse overlap found.
                         // Insert an equality and swap and trim the surrounding edits.
-                        normalizedDiffs.Insert(pointer, new Diff(Operation.EQUAL,
-                            deletion.Substring(0, overlap_length2)));
-                        normalizedDiffs[pointer - 1] = new(Operation.INSERT, insertion[..^overlap_length2]);
-                        normalizedDiffs[pointer + 1] = new(Operation.DELETE, deletion[overlap_length2..]);
+                        normalizedDiffs.Insert(pointer, new Diff(Operation.EQUAL, deletion[..commonOverlapSpan2.Length]));
+                        normalizedDiffs[pointer - 1] = new(Operation.INSERT, insertion[..^commonOverlapSpan2.Length]);
+                        normalizedDiffs[pointer + 1] = new(Operation.DELETE, deletion[commonOverlapSpan2.Length..]);
                         pointer++;
                     }
                 }
@@ -1116,5 +1017,432 @@ public static class StringExtensions
         }
 
         return levenshtein + Math.Max(insertions, deletions);
+    }
+
+    /**
+        * Find the 'middle snake' of a diff, split the problem in two
+        * and return the recursively constructed diff.
+        * See Myers 1986 paper: An O(ND) Difference Algorithm and Its Variations.
+        * @param text1 Old string to be diffed.
+        * @param text2 New string to be diffed.
+        * @param deadline Time at which to bail if not yet complete.
+        * @return List of Diff objects.
+        */
+    public static IEnumerable<Diff> BisectTexts(this string text1, string text2, CancellationToken cancellationToken)
+    {
+        // Cache the text lengths to prevent multiple calls.
+        int text1_length = text1.Length;
+        int text2_length = text2.Length;
+        int max_d = (text1_length + text2_length + 1) / 2;
+        int v_offset = max_d;
+        int v_length = 2 * max_d;
+
+        int[] v1 = new int[v_length];
+        int[] v2 = new int[v_length];
+        for (int x = 0; x < v_length; x++)
+        {
+            v1[x] = -1;
+            v2[x] = -1;
+        }
+
+        v1[v_offset + 1] = 0;
+        v2[v_offset + 1] = 0;
+
+        int delta = text1_length - text2_length;
+
+        // If the total number of characters is odd, then the front path will
+        // collide with the reverse path.
+        bool front = delta % 2 != 0;
+
+        // Offsets for start and end of k loop.
+        // Prevents mapping of space beyond the grid.
+        int k1start = 0;
+        int k1end = 0;
+        int k2start = 0;
+        int k2end = 0;
+        for (int d = 0; d < max_d; d++)
+        {
+            // Bail out if deadline is reached.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            // Walk the front path one step.
+            for (int k1 = -d + k1start; k1 <= d - k1end; k1 += 2)
+            {
+                int k1_offset = v_offset + k1;
+                int x1;
+                if (k1 == -d || k1 != d && v1[k1_offset - 1] < v1[k1_offset + 1])
+                {
+                    x1 = v1[k1_offset + 1];
+                }
+                else
+                {
+                    x1 = v1[k1_offset - 1] + 1;
+                }
+                int y1 = x1 - k1;
+                while (x1 < text1_length && y1 < text2_length
+                        && text1[x1] == text2[y1])
+                {
+                    x1++;
+                    y1++;
+                }
+                v1[k1_offset] = x1;
+                if (x1 > text1_length)
+                {
+                    // Ran off the right of the graph.
+                    k1end += 2;
+                }
+                else if (y1 > text2_length)
+                {
+                    // Ran off the bottom of the graph.
+                    k1start += 2;
+                }
+                else if (front)
+                {
+                    int k2_offset = v_offset + delta - k1;
+                    if (k2_offset >= 0 && k2_offset < v_length && v2[k2_offset] != -1)
+                    {
+                        // Mirror x2 onto top-left coordinate system.
+                        int x2 = text1_length - v2[k2_offset];
+                        if (x1 >= x2)
+                        {
+                            // Overlap detected.
+                            return SplitTexts(text1, text2, x1, y1, cancellationToken);
+                        }
+                    }
+                }
+            }
+
+            // Walk the reverse path one step.
+            for (int k2 = -d + k2start; k2 <= d - k2end; k2 += 2)
+            {
+                int k2_offset = v_offset + k2;
+                int x2;
+                if (k2 == -d || k2 != d && v2[k2_offset - 1] < v2[k2_offset + 1])
+                {
+                    x2 = v2[k2_offset + 1];
+                }
+                else
+                {
+                    x2 = v2[k2_offset - 1] + 1;
+                }
+                int y2 = x2 - k2;
+                while (x2 < text1_length && y2 < text2_length
+                    && text1[text1_length - x2 - 1]
+                    == text2[text2_length - y2 - 1])
+                {
+                    x2++;
+                    y2++;
+                }
+                v2[k2_offset] = x2;
+                if (x2 > text1_length)
+                {
+                    // Ran off the left of the graph.
+                    k2end += 2;
+                }
+                else if (y2 > text2_length)
+                {
+                    // Ran off the top of the graph.
+                    k2start += 2;
+                }
+                else if (!front)
+                {
+                    int k1_offset = v_offset + delta - k2;
+                    if (k1_offset >= 0 && k1_offset < v_length && v1[k1_offset] != -1)
+                    {
+                        int x1 = v1[k1_offset];
+                        int y1 = v_offset + x1 - k1_offset;
+                        // Mirror x2 onto top-left coordinate system.
+                        x2 = text1_length - v2[k2_offset];
+                        if (x1 >= x2)
+                        {
+                            // Overlap detected.
+                            return SplitTexts(text1, text2, x1, y1, cancellationToken);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Diff took too long and hit the deadline or
+        // number of diffs equals number of characters, no commonality at all.
+        return [
+            new Diff(Operation.DELETE, text1),
+            new Diff(Operation.INSERT, text2)
+        ];
+    }
+
+    /**
+        * Given the location of the 'middle snake', split the diff in two parts
+        * and recurse.
+        * @param text1 Old string to be diffed.
+        * @param text2 New string to be diffed.
+        * @param x Index of split point in text1.
+        * @param y Index of split point in text2.
+        * @param deadline Time at which to bail if not yet complete.
+        * @return LinkedList of Diff objects.
+        */
+    public static List<Diff> SplitTexts(string text1, string text2, int x, int y, CancellationToken cancellationToken)
+    {
+        string text1a = text1[..x];
+        string text2a = text2[..y];
+        string text1b = text1[x..];
+        string text2b = text2[y..];
+
+        // Compute both diffs serially.
+        List<Diff> diffs = diff_main(text1a, text2a, false, cancellationToken).ToList();
+        List<Diff> diffsb = diff_main(text1b, text2b, false, cancellationToken).ToList();
+
+        diffs.AddRange(diffsb);
+        return diffs;
+    }
+
+    // /**
+    //     * Find the differences between two texts.
+    //     * @param text1 Old string to be diffed.
+    //     * @param text2 New string to be diffed.
+    //     * @param checklines Speedup flag.  If false, then don't run a
+    //     *     line-level diff first to identify the changed areas.
+    //     *     If true, then run a faster slightly less optimal diff.
+    //     * @return List of Diff objects.
+    //     */
+    // public static IEnumerable<Diff> diff_main(string text1, string text2, bool checklines = true)
+    // {
+    //     if (!DiffTimeout.HasValue)
+    //     {
+    //         return diff_main(text1, text2, checklines, default);
+    //     }
+
+    //     using var cancellationTokenSource = new CancellationTokenSource(DiffTimeout.Value);
+    //     return diff_main(text1, text2, checklines, cancellationTokenSource.Token);
+    // }
+
+    /**
+        * Find the differences between two texts.  Simplifies the problem by
+        * stripping any common prefix or suffix off the texts before diffing.
+        * @param text1 Old string to be diffed.
+        * @param text2 New string to be diffed.
+        * @param checklines Speedup flag.  If false, then don't run a
+        *     line-level diff first to identify the changed areas.
+        *     If true, then run a faster slightly less optimal diff.
+        * @param deadline Time when the diff should be complete by.  Used
+        *     internally for recursive calls.  Users should set DiffTimeout
+        *     instead.
+        * @return List of Diff objects.
+        */
+    public static IEnumerable<Diff> diff_main(string text1, string text2, bool checklines, CancellationToken cancellationToken = default)
+    {
+        // Check for null inputs not needed since null can't be passed in C#.
+
+        // Check for equality (speedup).
+        if (string.IsNullOrEmpty(text1) && string.IsNullOrEmpty(text2))
+        {
+            yield break;
+        }
+
+        if (text1 == text2)
+        {
+            yield return new Diff(Operation.EQUAL, text1);
+        }
+
+        var diffs = SplitPrefixAndSuffix(text1, text2, checklines, cancellationToken).CleanupMerge();
+        foreach (var diff in diffs)
+        {
+            yield return diff;
+        }
+    }
+
+    public static IEnumerable<Diff> SplitPrefixAndSuffix(
+        string text1,
+        string text2,
+        bool checklines,
+        CancellationToken cancellationToken)
+    {
+        // // Trim off common prefix (speedup).
+        // int commonlength = text1.CommonPrefixLength(text2);
+        // string commonprefix = text1[..commonlength];
+        // text1 = text1[commonlength..];
+        // text2 = text2[commonlength..];
+
+        // // Trim off common suffix (speedup).
+        // commonlength = text1.CommonSuffixLength(text2);
+        // string commonsuffix = text1[^commonlength..];
+        // text1 = text1[..^commonlength];
+        // text2 = text2[..^commonlength];
+
+        // // Restore the prefix and suffix.
+        // if (commonprefix.Length != 0)
+        // {
+        //     yield return new Diff(Operation.EQUAL, commonprefix);
+        // }
+        // foreach (var diff in diff_compute(text1, text2, checklines, cancellationToken))
+        // {
+        //     yield return diff;
+        // }
+        // if (commonsuffix.Length != 0)
+        // {
+        //     yield return new Diff(Operation.EQUAL, commonsuffix);
+        // }
+
+        yield break;
+    }
+
+    /**
+        * Find the differences between two texts.  Assumes that the texts do not
+        * have any common prefix or suffix.
+        * @param text1 Old string to be diffed.
+        * @param text2 New string to be diffed.
+        * @param checklines Speedup flag.  If false, then don't run a
+        *     line-level diff first to identify the changed areas.
+        *     If true, then run a faster slightly less optimal diff.
+        * @param deadline Time when the diff should be complete by.
+        * @return List of Diff objects.
+        */
+    public static IEnumerable<Diff> diff_compute(string text1, string text2,
+                                    bool checklines, CancellationToken cancellationToken)
+    {
+        if (text1.Length == 0)
+        {
+            // Just add some text (speedup).
+            yield return new Diff(Operation.INSERT, text2);
+        }
+        else if (text2.Length == 0)
+        {
+            // Just delete some text (speedup).
+            yield return new Diff(Operation.DELETE, text1);
+        }
+
+        string longtext = text1.Length > text2.Length ? text1 : text2;
+        string shorttext = text1.Length > text2.Length ? text2 : text1;
+        int i = longtext.IndexOf(shorttext, StringComparison.Ordinal);
+        if (i != -1)
+        {
+            // Shorter text is inside the longer text (speedup).
+            Operation op = (text1.Length > text2.Length) ?
+                Operation.DELETE : Operation.INSERT;
+            yield return new Diff(op, longtext.Substring(0, i));
+            yield return new Diff(Operation.EQUAL, shorttext);
+            yield return new Diff(op, longtext.Substring(i + shorttext.Length));
+        }
+
+        if (shorttext.Length == 1)
+        {
+            // Single character string.
+            // After the previous speedup, the character can't be an equality.
+            yield return new Diff(Operation.DELETE, text1);
+            yield return new Diff(Operation.INSERT, text2);
+        }
+
+        // Check to see if the problem can be split in two.
+        var wasCommonHalfMiddleFound = text1.TryFindCommonHalfMiddle(
+            text2,
+            out var leftPrefixSpan,
+            out var leftSuffixSpan,
+            out var rightPrefixSpan,
+            out var rightSuffixSpan,
+            out var commonMiddleSpan
+        );
+
+        if (wasCommonHalfMiddleFound)
+        {
+            // A half-match was found, sort out the return data.
+            var leftPrefix = leftPrefixSpan.ToString();
+            var leftSuffix = leftSuffixSpan.ToString();
+            var rightPrefix = rightPrefixSpan.ToString();
+            var rightSuffix = rightSuffixSpan.ToString();
+            var commonMiddle = commonMiddleSpan.ToString();
+            // Send both pairs off for separate processing.
+            foreach (var diff in diff_main(leftPrefix, rightPrefix, checklines, cancellationToken))
+            {
+                yield return diff;
+            }
+            yield return new Diff(Operation.EQUAL, commonMiddle);
+            foreach (var diff in diff_main(leftSuffix, rightSuffix, checklines, cancellationToken))
+            {
+                yield return diff;
+            }
+        }
+
+        if (checklines && text1.Length > 100 && text2.Length > 100)
+        {
+            foreach (var diff in diff_lineMode(text1, text2, cancellationToken))
+            {
+                yield return diff;
+            }
+        }
+
+        foreach (var diff in BisectTexts(text1, text2, cancellationToken))
+        {
+            yield return diff;
+        }
+    }
+
+    /**
+        * Do a quick line-level diff on both strings, then rediff the parts for
+        * greater accuracy.
+        * This speedup can produce non-minimal diffs.
+        * @param text1 Old string to be diffed.
+        * @param text2 New string to be diffed.
+        * @param deadline Time when the diff should be complete by.
+        * @return List of Diff objects.
+        */
+    private static List<Diff> diff_lineMode(string text1, string text2,
+                                        CancellationToken cancellationToken)
+    {
+        // Scan the text on a line-by-line basis first.
+        HashedTexts hashes = text1.CompressTexts(text2);
+
+        text1 = hashes.Text1Hashed;
+        text2 = hashes.Text2Hashed;
+        List<string> linearray = hashes.HashLookup;
+
+        List<Diff> diffs = [.. CleanupSemantic(diff_main(text1, text2, false, cancellationToken).DecompressDiff(linearray))];
+
+        // Rediff any replacement blocks, this time character-by-character.
+        // Add a dummy entry at the end.
+        diffs.Add(new Diff(Operation.EQUAL, string.Empty));
+        int pointer = 0;
+        int count_delete = 0;
+        int count_insert = 0;
+        string text_delete = string.Empty;
+        string text_insert = string.Empty;
+        while (pointer < diffs.Count)
+        {
+            switch (diffs[pointer].Operation)
+            {
+                case Operation.INSERT:
+                    count_insert++;
+                    text_insert += diffs[pointer].Text;
+                    break;
+                case Operation.DELETE:
+                    count_delete++;
+                    text_delete += diffs[pointer].Text;
+                    break;
+                case Operation.EQUAL:
+                    // Upon reaching an equality, check for prior redundancies.
+                    if (count_delete >= 1 && count_insert >= 1)
+                    {
+                        // Delete the offending records and add the merged ones.
+                        diffs.RemoveRange(pointer - count_delete - count_insert,
+                            count_delete + count_insert);
+                        pointer = pointer - count_delete - count_insert;
+                        List<Diff> subDiff =
+                            diff_main(text_delete, text_insert, false, cancellationToken).ToList();
+                        diffs.InsertRange(pointer, subDiff);
+                        pointer = pointer + subDiff.Count;
+                    }
+                    count_insert = 0;
+                    count_delete = 0;
+                    text_delete = string.Empty;
+                    text_insert = string.Empty;
+                    break;
+            }
+            pointer++;
+        }
+        diffs.RemoveAt(diffs.Count - 1);  // Remove the dummy entry at the end.
+
+        return diffs;
     }
 }

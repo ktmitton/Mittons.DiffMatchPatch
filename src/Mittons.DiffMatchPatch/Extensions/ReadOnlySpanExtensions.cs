@@ -264,6 +264,9 @@ public static class ReadOnlySpanExtensions
             }
         }
 
-        return false;
+        return commonOverlap.Length > 0;
     }
+
+    public static bool TryFindCommonOverlap(this string @this, string other, out ReadOnlySpan<char> commonOverlap)
+        => @this.AsSpan().TryFindCommonOverlap(other, out commonOverlap);
 }

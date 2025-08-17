@@ -110,35 +110,40 @@ public class ReadOnlySpanExtensionsTests
     {
         var expectedWasOverlapFound = false;
 
-        var actualWasOverlapFound = left.AsSpan().TryFindCommonOverlap(right, out var actualCommonOverlapSpan);
+        var actualWasOverlapFound = left.AsSpan().TryFindCommonOverlap(right, out _);
 
         await Assert.That(actualWasOverlapFound).IsEqualTo(expectedWasOverlapFound);
     }
 
     [Test]
-    [Arguments("abc", "abcd", 3)]
-    [Arguments("123456xxx", "xxxabcd", 3)]
+    [Arguments("abc", "abcd", "abc")]
+    [Arguments("123456xxx", "xxxabcd", "xxx")]
     public async Task CommonOverlapLength_WhenThereIsOverlap_ExpectCharacterCount(
         string left,
         string right,
-        int expectedSharedCharacterCount
+        string expectedCommonOverlap
     )
     {
-        var actualSharedCharacterCount = left.CommonOverlapLength(right);
+        var expectedWasOverlapFound = true;
 
-        await Assert.That(actualSharedCharacterCount).IsEqualTo(expectedSharedCharacterCount);
+        var actualWasOverlapFound = left.TryFindCommonOverlap(right, out var commonOverlapSpan);
+        var actualCommonOverlap = commonOverlapSpan.ToString();
+
+        await Assert.That(actualWasOverlapFound).IsEqualTo(expectedWasOverlapFound);
+        await Assert.That(actualCommonOverlap).IsEqualTo(expectedCommonOverlap);
     }
 
     [Test]
-    [Arguments("fi", "\ufb01i", 0)]
+    [Arguments("fi", "\ufb01i")]
     public async Task CommonOverlapLength_WhenOverlapMixesUnicodeLigaturesWithAscii_ExpectZero(
         string left,
-        string right,
-        int expectedSharedCharacterCount
+        string right
     )
     {
-        var actualSharedCharacterCount = left.CommonOverlapLength(right);
+        var expectedWasOverlapFound = false;
 
-        await Assert.That(actualSharedCharacterCount).IsEqualTo(expectedSharedCharacterCount);
+        var actualWasOverlapFound = left.TryFindCommonOverlap(right, out _);
+
+        await Assert.That(actualWasOverlapFound).IsEqualTo(expectedWasOverlapFound);
     }
 }
