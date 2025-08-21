@@ -250,13 +250,21 @@ public static class ReadOnlySpanExtensions
 
         for (int i = maximumOverlap - 1; i > -1; --i)
         {
-            var pattern = thisSpan[i..];
-            if (otherSpan.StartsWith(pattern))
+            // var temp = otherSpan.Slice(i);
+            var otherPattern = otherSpan[..i];
+            var pattern = thisSpan.Slice(i);
+            if (otherPattern.SequenceEqual(pattern))
             {
                 commonOverlap = pattern;
 
                 continue;
             }
+            // if (otherSpan.StartsWith(pattern))
+            // {
+            //     commonOverlap = pattern;
+
+            //     continue;
+            // }
 
             if (otherSpan.IndexOf(pattern, StringComparison.Ordinal) == -1)
             {
@@ -269,4 +277,108 @@ public static class ReadOnlySpanExtensions
 
     public static bool TryFindCommonOverlap(this string @this, string other, out ReadOnlySpan<char> commonOverlap)
         => @this.AsSpan().TryFindCommonOverlap(other, out commonOverlap);
+
+    public static bool TryFindCommonOverlap(
+        this ReadOnlySpan<char> @this,
+        ReadOnlySpan<char> other,
+        out ReadOnlySpan<char> leftPrefix,
+        out ReadOnlySpan<char> leftSuffix,
+        out ReadOnlySpan<char> rightPrefix,
+        out ReadOnlySpan<char> rightSuffix,
+        out ReadOnlySpan<char> commonOverlap
+    )
+    {
+        leftPrefix = leftSuffix = rightPrefix = rightSuffix = commonOverlap = [];
+
+        var maximumOverlap = Math.Min(@this.Length, other.Length);
+        if (maximumOverlap == 0)
+        {
+            return false;
+        }
+
+        var thisStartSpan = @this[..maximumOverlap];
+        var thisEndSpan = @this[^maximumOverlap..];
+
+        var otherStartSpan = other[..maximumOverlap];
+        var otherEndSpan = other[^maximumOverlap..];
+
+        if (thisEndSpan.SequenceEqual(otherStartSpan))
+        {
+            leftPrefix = @this[..(@this.Length - maximumOverlap)];
+            rightSuffix = other[maximumOverlap..];
+            commonOverlap = thisEndSpan;
+
+            return true;
+        }
+
+        if (otherEndSpan.SequenceEqual(thisStartSpan))
+        {
+            leftSuffix = @this[maximumOverlap..];
+            rightPrefix = other[..(other.Length - maximumOverlap)];
+            commonOverlap = otherEndSpan;
+
+            return true;
+        }
+
+        ReadOnlySpan<char> bestLeftCommonOverlap = [];
+        ReadOnlySpan<char> bestRightCommonOverlap = [];
+
+        var checkLeftEndsWithRight = true;
+        var checkRightEndsWithLeft = true;
+
+        for (int i = maximumOverlap - 1; i > -1; --i)
+        {
+            var leftPattern = thisEndSpan[i..];
+            var rightPattern = otherStartSpan[i..];
+
+            if (checkLeftEndsWithRight && otherStartSpan.StartsWith(leftPattern))
+            {
+                bestLeftCommonOverlap = leftPattern;
+            }
+
+            if (checkRightEndsWithLeft && thisStartSpan.StartsWith(rightPattern))
+            {
+                bestRightCommonOverlap = rightPattern;
+            }
+
+            checkLeftEndsWithRight = checkLeftEndsWithRight && (otherStartSpan.IndexOf(leftPattern, StringComparison.Ordinal) != -1);
+            checkRightEndsWithLeft = checkRightEndsWithLeft && (thisStartSpan.IndexOf(rightPattern, StringComparison.Ordinal) != -1);
+
+            if (!checkLeftEndsWithRight && !checkRightEndsWithLeft)
+            {
+                break;
+            }
+        }
+
+        if ((bestLeftCommonOverlap.Length == 0) && (bestRightCommonOverlap.Length == 0))
+        {
+            return false;
+        }
+
+        if (bestLeftCommonOverlap.Length >= bestRightCommonOverlap.Length)
+        {
+            commonOverlap = bestLeftCommonOverlap;
+            leftPrefix = @this[..(@this.Length - commonOverlap.Length)];
+            rightSuffix = other[commonOverlap.Length..];
+        }
+        else
+        {
+            commonOverlap = bestRightCommonOverlap;
+            leftSuffix = @this[commonOverlap.Length..];
+            rightPrefix = other[..(other.Length - commonOverlap.Length)];
+        }
+
+        return true;
+    }
+
+    public static bool TryFindCommonOverlap(
+        this string @this,
+        string other,
+        out ReadOnlySpan<char> leftPrefix,
+        out ReadOnlySpan<char> leftSuffix,
+        out ReadOnlySpan<char> rightPrefix,
+        out ReadOnlySpan<char> rightSuffix,
+        out ReadOnlySpan<char> commonOverlap
+    )
+        => @this.AsSpan().TryFindCommonOverlap(other, out leftPrefix, out leftSuffix, out rightPrefix, out rightSuffix, out commonOverlap);
 }

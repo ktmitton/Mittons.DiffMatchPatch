@@ -106,44 +106,63 @@ public class ReadOnlySpanExtensionsTests
     [Test]
     [Arguments("", "abcd")]
     [Arguments("123456", "abcd")]
-    public async Task CommonOverlapLength_WhenThereIsNoOverlap_ExpectZero(string left, string right)
+    [Arguments("abcd", "")]
+    [Arguments("abcd", "123456")]
+    public async Task CommonOverlapLength_WhenThereIsNoOverlap_ExpectNoCommonality(string left, string right)
     {
         var expectedWasOverlapFound = false;
 
-        var actualWasOverlapFound = left.AsSpan().TryFindCommonOverlap(right, out _);
+        var actualWasOverlapFound = left.AsSpan().TryFindCommonOverlap(right, out _, out _, out _, out _, out _);
 
         await Assert.That(actualWasOverlapFound).IsEqualTo(expectedWasOverlapFound);
-    }
-
-    [Test]
-    [Arguments("abc", "abcd", "abc")]
-    [Arguments("123456xxx", "xxxabcd", "xxx")]
-    public async Task CommonOverlapLength_WhenThereIsOverlap_ExpectCharacterCount(
-        string left,
-        string right,
-        string expectedCommonOverlap
-    )
-    {
-        var expectedWasOverlapFound = true;
-
-        var actualWasOverlapFound = left.TryFindCommonOverlap(right, out var commonOverlapSpan);
-        var actualCommonOverlap = commonOverlapSpan.ToString();
-
-        await Assert.That(actualWasOverlapFound).IsEqualTo(expectedWasOverlapFound);
-        await Assert.That(actualCommonOverlap).IsEqualTo(expectedCommonOverlap);
     }
 
     [Test]
     [Arguments("fi", "\ufb01i")]
-    public async Task CommonOverlapLength_WhenOverlapMixesUnicodeLigaturesWithAscii_ExpectZero(
+    [Arguments("\ufb01i", "fi")]
+    public async Task CommonOverlapLength_WhenOverlapMixesUnicodeLigaturesWithAscii_ExpectNoCommonality(
         string left,
         string right
     )
     {
         var expectedWasOverlapFound = false;
 
-        var actualWasOverlapFound = left.TryFindCommonOverlap(right, out _);
+        var actualWasOverlapFound = left.AsSpan().TryFindCommonOverlap(right, out _, out _, out _, out _, out _);
 
         await Assert.That(actualWasOverlapFound).IsEqualTo(expectedWasOverlapFound);
+    }
+
+    [Test]
+    [Arguments("abc", "abcd", "", "", "", "d", "abc")]
+    [Arguments("123456xxx", "xxxabcd", "123456", "", "", "abcd", "xxx")]
+    [Arguments("dabc", "abc", "d", "", "", "", "abc")]
+    [Arguments("abcdxxx", "xxx123456", "abcd", "", "", "123456", "xxx")]
+    [Arguments("fi", "i\ufb01", "f", "", "", "\ufb01", "i")]
+    [Arguments("i\ufb01", "fi", "", "\ufb01", "f", "", "i")]
+    public async Task CommonOverlapLength_WhenThereIsOverlap_ExpectCommonality(
+        string left,
+        string right,
+        string expectedLeftPrefix,
+        string expectedLeftSuffix,
+        string expectedRightPrefix,
+        string expectedRightSuffix,
+        string expectedCommonOverlap
+    )
+    {
+        var expectedWasOverlapFound = true;
+
+        var actualWasOverlapFound = left.TryFindCommonOverlap(right, out var leftPrefixSpan, out var leftSuffixSpan, out var rightPrefixSpan, out var rightSuffixSpan, out var commonOverlapSpan);
+        var actualLeftPrefix = leftPrefixSpan.ToString();
+        var actualLeftSuffix = leftSuffixSpan.ToString();
+        var actualRightPrefix = rightPrefixSpan.ToString();
+        var actualRightSuffix = rightSuffixSpan.ToString();
+        var actualCommonOverlap = commonOverlapSpan.ToString();
+
+        await Assert.That(actualWasOverlapFound).IsEqualTo(expectedWasOverlapFound);
+        await Assert.That(actualLeftPrefix).IsEqualTo(expectedLeftPrefix);
+        await Assert.That(actualLeftSuffix).IsEqualTo(expectedLeftSuffix);
+        await Assert.That(actualRightPrefix).IsEqualTo(expectedRightPrefix);
+        await Assert.That(actualRightSuffix).IsEqualTo(expectedRightSuffix);
+        await Assert.That(actualCommonOverlap).IsEqualTo(expectedCommonOverlap);
     }
 }
